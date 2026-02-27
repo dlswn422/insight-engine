@@ -1,7 +1,6 @@
 from datetime import timezone
 from crawlers.naver_news import NaverNewsCrawler
 from services.article_service import process_article
-from services.customer_matcher import match_customers
 from repositories.keyword_repository import get_keywords
 from repositories.state_repository import (
     get_last_crawled_at,
@@ -46,9 +45,6 @@ def run_crawler():
 
             if saved:
                 print(f"✅ 저장 완료: {saved['title']}")
-
-                # 🔥 고객 매핑 (customers 기준)
-                match_customers(saved)
 
                 # 최신 기사 시간 기록
                 if newest_article_time is None or article_time > newest_article_time:
