@@ -27,12 +27,16 @@ def article_exists(url: str) -> bool:
 
 def insert_article(data: dict):
     """
-    기사 데이터 insert
-    data는 딕셔너리 형태
+    기사 데이터 upsert (Race Condition 방지)
+    URL을 고유 키로 사용하여 중복 시 무시
+    
+    [경고] DB에 UNIQUE 제약 조건이 없으면 동작하지 않습니다.
+    Supabase SQL Editor에서 반드시 다음 쿼리를 실행하세요:
+    ALTER TABLE articles ADD CONSTRAINT articles_url_key UNIQUE (url);
     """
     return (
         supabase
         .table("articles")
-        .insert(data)
+        .upsert(data, on_conflict="url", ignore_duplicates=True)
         .execute()
     )

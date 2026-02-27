@@ -1,5 +1,7 @@
 from datetime import timezone
 from crawlers.naver_news import NaverNewsCrawler
+from crawlers.daum_news import DaumNewsCrawler
+# google_news는 아키텍처 변경으로 비활성화 (2024-02-27)
 from services.article_service import process_article
 from repositories.keyword_repository import get_keywords
 from repositories.state_repository import (
@@ -8,10 +10,20 @@ from repositories.state_repository import (
 )
 
 
-def run_crawler():
-    print("🚀 크롤링 시작")
+def get_crawler(source: str):
+    """매체 이름에 따라 알맞은 크롤러 객체 반환 (naver / daum 한정)"""
+    if source == 'naver':
+        return NaverNewsCrawler()
+    elif source == 'daum':
+        return DaumNewsCrawler()
+    else:
+        raise ValueError(f"지원하지 않는 소스입니다: {source} (현재 naver / daum 만 지원)")
 
-    crawler = NaverNewsCrawler()
+
+def run_crawler(source: str = 'naver'):
+    print(f"🚀 [{source}] 크롤링 시작")
+
+    crawler = get_crawler(source)
     keywords = get_keywords()
 
     last_crawled_at = get_last_crawled_at()

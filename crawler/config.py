@@ -11,10 +11,12 @@ config.py
 
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 # .env 파일 로드
 # 반드시 crawler 폴더 바로 아래에 .env 위치해야 함
-load_dotenv()
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # ==============================
 # Supabase 설정
@@ -30,6 +32,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 # Naver API 설정
 # ==============================
 
+# (네이버 API 키는 사용하는 곳에서 직접 확인하거나, 필요 시에만 사용할 수 있도록 처리 권장)
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 

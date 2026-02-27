@@ -4,12 +4,15 @@ crawler/workers/signal_scout_worker.py
 
 역할:
 - articles 테이블에서 scout_status = pending 기사 조회
-- GPT로 Signal 추출
-- signals 테이블에 INSERT (signal_category 자동 세팅)
+- [Step 1] is_relevant_article: 이진 분류기로 관련성 먼저 판별
+  → False: scout_status = 'irrelevant' 로 마킹 후 종료 (무한 루프 방지)
+  → True : [Step 2] extract_signals 로 무거운 시그널 추출 진행
+- signals 테이블에 INSERT
 - articles 상태 업데이트
 """
 
 from repositories.db import supabase
+from analysis.analyzer import is_relevant_article
 from analysis.signal_scout import extract_signals
 from services.signal_classifier import get_signal_category
 from datetime import datetime
@@ -38,7 +41,8 @@ def update_article_status(article_id, status):
     기사 상태 업데이트
 
     상태 흐름:
-    pending → analyzing → done
+    pending → analyzing → done         (관련 기사 정상 처리)
+    pending → irrelevant                (Step 1 이진 분류기에서 탈락)
     """
     (
         supabase
@@ -81,24 +85,53 @@ def insert_signal(article_id, signal):
 
 def run_signal_scout():
     """
-    Signal Scout 전체 실행 로직
+    Signal Scout 전체 실행 로직 (2단계 프롬프트 체이닝)
 
-    흐름:
-    1. pending 기사 조회
-    2. 상태 → analyzing
-    3. GPT 호출
-    4. signals INSERT
-    5. 상태 → done
+    [Step 1] is_relevant_article: 이진 분류기
+      → False → scout_status = 'irrelevant' 마킹 후 SKIP
+               (pending 그대로 두면 다음 루프에서 무한 재분석 치명적 에러 발생!)
+      → True  → Step 2 진행
+
+    [Step 2] extract_signals: 무거운 시그널 추출 프롬프트
+      → signals 테이블에 저장
+      → scout_status = 'done' 으로 마킹
     """
 
     print("🚀 Signal Scout 시작")
 
     articles = get_pending_articles()
 
+    if not articles:
+        print("📭 처리할 pending 기사 없음")
+        return
+
     for article in articles:
+        article_id = article["id"]
+        title = article.get("title", "")
+        content = article.get("content", "")
+
+        print(f"\n📰 처리 중: {title[:50]}...")
+
+        # ============================================================
+        # [Step 1] 이진 분류기 - 관련 기사 여부 먼저 판별
+        # ============================================================
+        relevant = is_relevant_article(title, content)
+
+        if not relevant:
+            # ❌ 관련 없는 기사 → 'irrelevant' 마킹 후 SKIP
+            # ⚠️ 이 업데이트를 빠뜨리면 pending 상태가 유지되어
+            #    다음 루프에서 동일 기사를 무한히 재분석하는 버그 발생!
+            print(f"  ⏭️ 관련 없는 기사 → scout_status = 'irrelevant' 마킹")
+            update_article_status(article_id, "irrelevant")
+            continue
+
+        # ============================================================
+        # [Step 2] 관련 기사 → 무거운 시그널 추출 프롬프트 실행
+        # ============================================================
+        print(f"  ✅ 관련 기사 확인 → 시그널 추출 시작")
 
         # 상태 변경 → analyzing
-        update_article_status(article["id"], "analyzing")
+        update_article_status(article_id, "analyzing")
 
         # GPT로 Signal 추출
         result = extract_signals(article)
@@ -106,9 +139,12 @@ def run_signal_scout():
         # Signal 존재 시 DB 저장
         if result and "signals" in result:
             for sig in result["signals"]:
-                insert_signal(article["id"], sig)
+                insert_signal(article_id, sig)
+            print(f"  💡 시그널 {len(result['signals'])}건 저장 완료")
+        else:
+            print(f"  ℹ️ 시그널 없음 (GPT 결과 비어있음)")
 
         # 상태 변경 → done
-        update_article_status(article["id"], "done")
+        update_article_status(article_id, "done")
 
-    print("✅ Signal Scout 종료")
+    print("\n✅ Signal Scout 종료")

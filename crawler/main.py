@@ -7,5 +7,12 @@ main.py
 
 from services.crawler_service import run_crawler
 
+def main():
+    print("--- 테스트: 네이버 크롤링 ---")
+    run_crawler("naver")
+
+    print("\n--- 테스트: 다음 크롤링 ---")
+    run_crawler("daum")
+
 if __name__ == "__main__":
-    run_crawler()
+    main()
