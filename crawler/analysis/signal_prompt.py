@@ -1,33 +1,38 @@
 """
-파일 경로:
-crawler/analysis/signal_prompt.py
+Signal Prompt (Market Radar 확장 버전)
 
-역할:
-- GPT에게 기사에서 '비즈니스 이벤트(Signal)'를 추출하도록 지시하는 프롬프트 생성
-- 기사 → 구조화된 이벤트 JSON으로 변환하기 위한 템플릿
+목적:
+- 기사에서 산업 구조 기반 Signal 추출
+- 단순 이벤트 → 산업 맥락 포함 구조화
 """
 
 def build_signal_prompt(title: str, content: str):
-    """
-    기사 제목과 본문을 받아
-    GPT가 Signal을 추출하도록 프롬프트 생성
-    """
 
     return f"""
-당신은 B2B 시장 신호 탐지 AI입니다.
+당신은 제약/화장품 포장 산업 분석 AI입니다.
 
-기사에서 비즈니스 이벤트(Trigger)를 추출하세요.
+기사에서 다음 정보를 추출하세요:
+
+1. 기업명
+2. 이벤트 유형
+3. 산업 카테고리
+4. 트렌드 버킷
+5. 심각도(1~5)
 
 JSON 형식으로만 응답하세요:
 
 {{
   "signals": [
     {{
-      "signal_type": "investment / capacity_expansion / hiring / regulation / quality_issue / competitor_activity / product_launch / partnership / risk_event",
-      "signal_strength": 0~100,
-      "impact_direction": "positive / negative / neutral",
-      "description": "이벤트 설명",
-      "event_date": "YYYY-MM-DD"
+      "company_name": "",
+      "event_type": "",
+      "signal_category": "CAPA / Quality / Regulation / Product / Partnership",
+      "industry_tag": "PFS / RTU / Vial / Cosmetic / Bio",
+      "trend_bucket": "Expansion / Switching / Risk / Investment",
+      "impact_type": "risk / opportunity",
+      "impact_strength": 0~100,
+      "severity_level": 1~5,
+      "confidence": 0.0~1.0
     }}
   ]
 }}
