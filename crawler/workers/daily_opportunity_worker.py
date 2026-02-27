@@ -1,11 +1,13 @@
 """
-Daily Opportunity Worker
+Daily Opportunity Worker (중복 완전 방어 버전)
 
 역할:
 - company_signal_summary 조회
 - 상위 opportunity 기업 추출
-- LLM 1회 호출
-- daily_opportunity_reports 저장
+- LLM 호출
+- 하루 1회 리포트 upsert 저장
+
+⚠️ report_date UNIQUE 기반 upsert 사용
 """
 
 import os
@@ -16,7 +18,10 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from repositories.db import supabase
 
-# .env 로드
+
+# ---------------------------------------------------
+# 1️⃣ .env 로드
+# ---------------------------------------------------
 env_path = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -24,10 +29,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 # ---------------------------------------------------
-# 1️⃣ 상위 기회 기업 조회
+# 2️⃣ 상위 기업 조회
 # ---------------------------------------------------
 def get_top_opportunity_companies(limit=5):
-
+    """
+    opportunity_score 기준 상위 기업 조회
+    """
     result = (
         supabase
         .table("company_signal_summary")
@@ -41,28 +48,27 @@ def get_top_opportunity_companies(limit=5):
 
 
 # ---------------------------------------------------
-# 2️⃣ LLM 프롬프트 생성
+# 3️⃣ LLM 프롬프트 생성
 # ---------------------------------------------------
-def build_opportunity_prompt(companies):
+def build_prompt(companies):
 
     return f"""
-당신은 신일팜글래스의 영업 전략 컨설턴트입니다.
+당신은 신일팜글래스 영업 전략 AI입니다.
 
-다음은 최근 30일간 주요 기업의 산업 변화 데이터입니다:
+최근 30일 산업 변화 데이터:
 
 {json.dumps(companies, indent=2, ensure_ascii=False)}
 
-각 기업별로:
+각 기업별:
+1. 영업 기회 요약
+2. 왜 기회인지 설명
+3. 추천 액션
+4. 우선순위 (High/Medium/Low)
 
-1. 왜 영업 기회가 발생했는지 설명
-2. 어떤 유리용기/세척 서비스 니즈가 생길 수 있는지
-3. 영업팀이 취해야 할 Next Best Action
-4. 우선순위(High/Medium/Low)
-
-형식은 아래 JSON으로만 응답하세요:
+JSON으로만 응답:
 
 {{
-  "daily_summary": "...",
+  "daily_summary": "",
   "accounts": [
     {{
       "company": "",
@@ -76,17 +82,15 @@ def build_opportunity_prompt(companies):
 
 
 # ---------------------------------------------------
-# 3️⃣ LLM 호출
+# 4️⃣ LLM 호출
 # ---------------------------------------------------
-def generate_daily_report(companies):
-
-    prompt = build_opportunity_prompt(companies)
+def generate_report(companies):
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Return only valid JSON."},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": "Return valid JSON only."},
+            {"role": "user", "content": build_prompt(companies)}
         ],
         temperature=0.3,
         response_format={"type": "json_object"}
@@ -96,18 +100,24 @@ def generate_daily_report(companies):
 
 
 # ---------------------------------------------------
-# 4️⃣ DB 저장
+# 5️⃣ 하루 1회 upsert 저장 (중복 방어 핵심)
 # ---------------------------------------------------
 def save_daily_report(report_data):
 
-    supabase.table("daily_opportunity_reports").insert({
-        "report_date": datetime.utcnow().date().isoformat(),
-        "summary": json.dumps(report_data, ensure_ascii=False)
-    }).execute()
+    today = datetime.utcnow().date().isoformat()
+
+    supabase.table("daily_opportunity_reports").upsert(
+        {
+            "report_date": today,
+            "summary": json.dumps(report_data, ensure_ascii=False),
+            "created_at": datetime.utcnow().isoformat()
+        },
+        on_conflict="report_date"
+    ).execute()
 
 
 # ---------------------------------------------------
-# 5️⃣ 실행 함수
+# 6️⃣ 실행 함수
 # ---------------------------------------------------
 def run_daily_opportunity_worker():
 
@@ -119,7 +129,7 @@ def run_daily_opportunity_worker():
         print("❌ 집계 데이터 없음")
         return
 
-    report = generate_daily_report(companies)
+    report = generate_report(companies)
 
     save_daily_report(report)
 
