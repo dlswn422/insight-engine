@@ -1,27 +1,24 @@
 """
-파일 경로:
-crawler/workers/signal_scout_worker.py
+Signal Scout Worker (MVP 최적 구조 - RPC 제거 버전)
 
 역할:
-- articles 테이블에서 scout_status = pending 기사 조회
+- pending 기사 조회
 - GPT로 Signal 추출
-- signals 테이블에 INSERT (signal_category 자동 세팅)
-- articles 상태 업데이트
+- signals 저장
+- companies 점수 누적 (직접 update)
+- 기사 상태 완료 처리
 """
 
 from repositories.db import supabase
 from analysis.signal_scout import extract_signals
-from services.signal_classifier import get_signal_category
 from datetime import datetime
 
 
+# ---------------------------------------------------
+# 1️⃣ pending 기사 조회
+# ---------------------------------------------------
 def get_pending_articles(limit=5):
-    """
-    아직 Signal 처리되지 않은 기사 조회
 
-    - scout_status = 'pending' 인 기사만 조회
-    - limit는 한 번에 처리할 기사 수 (GPT 비용/안정성 고려)
-    """
     result = (
         supabase
         .table("articles")
@@ -30,66 +27,94 @@ def get_pending_articles(limit=5):
         .limit(limit)
         .execute()
     )
+
     return result.data
 
 
+# ---------------------------------------------------
+# 2️⃣ 기사 상태 업데이트
+# ---------------------------------------------------
 def update_article_status(article_id, status):
-    """
-    기사 상태 업데이트
 
-    상태 흐름:
-    pending → analyzing → done
-    """
-    (
-        supabase
-        .table("articles")
-        .update({"scout_status": status})
-        .eq("id", article_id)
+    supabase.table("articles") \
+        .update({"scout_status": status}) \
+        .eq("id", article_id) \
         .execute()
-    )
 
 
-def insert_signal(article_id, signal):
-    """
-    signals 테이블에 이벤트 저장
-
-    - signal_type 기반으로 signal_category 자동 분류
-    - signal_strength / direction 그대로 저장
-    """
-
-    # 🔥 signal_type → category 자동 매핑
-    category = get_signal_category(signal["signal_type"])
+# ---------------------------------------------------
+# 3️⃣ Signal 저장
+# ---------------------------------------------------
+def insert_signal(article_id, sig):
 
     data = {
         "article_id": article_id,
-        "signal_type": signal["signal_type"],
-        "signal_category": category,  # 자동 세팅
-        "signal_strength": signal["signal_strength"],
-        "impact_direction": signal["impact_direction"],
-        "description": signal["description"],
-        "event_date": signal.get("event_date"),
+        "company_name": sig["company_name"],
+        "event_type": sig["event_type"],
+        "impact_type": sig["impact_type"],
+        "impact_strength": sig["impact_strength"],
+        "opportunity_type": sig["opportunity_type"],
+        "confidence": sig["confidence"],
         "created_at": datetime.utcnow().isoformat()
     }
 
-    (
-        supabase
-        .table("signals")
-        .insert(data)
+    result = supabase.table("signals").insert(data).execute()
+
+    return result.data[0] if result.data else None
+
+
+# ---------------------------------------------------
+# 4️⃣ Company 점수 누적 (RPC 제거)
+# ---------------------------------------------------
+def update_company_score(sig):
+
+    company_name = sig["company_name"]
+    impact_type = sig["impact_type"]
+    strength = sig["impact_strength"]
+
+    # 1️⃣ 기업 조회
+    existing = supabase.table("companies") \
+        .select("*") \
+        .eq("company_name", company_name) \
         .execute()
-    )
+
+    # 2️⃣ 없으면 생성
+    if not existing.data:
+        supabase.table("companies").insert({
+            "company_name": company_name,
+            "risk_score": 0,
+            "opportunity_score": 0
+        }).execute()
+
+        existing = supabase.table("companies") \
+            .select("*") \
+            .eq("company_name", company_name) \
+            .execute()
+
+    company = existing.data[0]
+
+    # 3️⃣ 점수 계산
+    if impact_type == "risk":
+        new_score = company["risk_score"] + strength
+
+        supabase.table("companies") \
+            .update({"risk_score": new_score}) \
+            .eq("company_name", company_name) \
+            .execute()
+
+    elif impact_type == "opportunity":
+        new_score = company["opportunity_score"] + strength
+
+        supabase.table("companies") \
+            .update({"opportunity_score": new_score}) \
+            .eq("company_name", company_name) \
+            .execute()
 
 
+# ---------------------------------------------------
+# 5️⃣ 전체 실행 로직
+# ---------------------------------------------------
 def run_signal_scout():
-    """
-    Signal Scout 전체 실행 로직
-
-    흐름:
-    1. pending 기사 조회
-    2. 상태 → analyzing
-    3. GPT 호출
-    4. signals INSERT
-    5. 상태 → done
-    """
 
     print("🚀 Signal Scout 시작")
 
@@ -97,18 +122,27 @@ def run_signal_scout():
 
     for article in articles:
 
-        # 상태 변경 → analyzing
-        update_article_status(article["id"], "analyzing")
+        try:
+            update_article_status(article["id"], "analyzing")
 
-        # GPT로 Signal 추출
-        result = extract_signals(article)
+            result = extract_signals(article)
 
-        # Signal 존재 시 DB 저장
-        if result and "signals" in result:
             for sig in result["signals"]:
+
+                # confidence 필터
+                if sig["confidence"] < 0.7:
+                    continue
+
+                # 1️⃣ signal 저장
                 insert_signal(article["id"], sig)
 
-        # 상태 변경 → done
-        update_article_status(article["id"], "done")
+                # 2️⃣ 기업 점수 누적
+                update_company_score(sig)
+
+            update_article_status(article["id"], "done")
+
+        except Exception as e:
+            print("❌ 처리 실패:", e)
+            update_article_status(article["id"], "pending")
 
     print("✅ Signal Scout 종료")
