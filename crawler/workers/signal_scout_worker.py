@@ -1,27 +1,21 @@
 """
-Signal Scout Worker (Market Radar 확장 버전)
+Signal Scout Worker (Market Radar 확장 버전 + 2단계 프롬프트 체이닝)
 
 역할:
-<<<<<<< HEAD
 - articles 테이블에서 scout_status = pending 기사 조회
 - [Step 1] is_relevant_article: 이진 분류기로 관련성 먼저 판별
   → False: scout_status = 'irrelevant' 로 마킹 후 종료 (무한 루프 방지)
   → True : [Step 2] extract_signals 로 무거운 시그널 추출 진행
-- signals 테이블에 INSERT
-- articles 상태 업데이트
-=======
-- pending 기사 조회
-- GPT로 구조화된 산업 Signal 추출
 - signals 테이블에 upsert (중복 방어)
 - companies 존재 보장
 - 기사 상태 완료 처리
 
-확장된 필드:
+확장된 Signal 필드:
 - signal_category
 - industry_tag
 - trend_bucket
 - severity_level
->>>>>>> main
+- confidence
 """
 
 from repositories.db import supabase
@@ -35,7 +29,8 @@ from datetime import datetime
 # ---------------------------------------------------
 def get_pending_articles(limit=5):
     """
-    scout_status = pending 기사 조회
+    scout_status = pending 기사만 조회
+    - limit: 한 번에 처리할 기사 수 (GPT 비용/안정성 고려)
     """
     result = (
         supabase
@@ -53,16 +48,12 @@ def get_pending_articles(limit=5):
 # ---------------------------------------------------
 def update_article_status(article_id, status):
     """
-<<<<<<< HEAD
     기사 상태 업데이트
 
     상태 흐름:
-    pending → analyzing → done         (관련 기사 정상 처리)
     pending → irrelevant                (Step 1 이진 분류기에서 탈락)
-=======
-    기사 상태 변경
-    pending → analyzing → done
->>>>>>> main
+    pending → analyzing → done          (관련 기사 정상 처리)
+    analyzing → pending                 (처리 중 예외 발생 시 복구)
     """
     supabase.table("articles") \
         .update({"scout_status": status}) \
@@ -99,9 +90,8 @@ def ensure_company_exists(company_name):
 def insert_signal_safe(article_id, sig):
     """
     확장된 signals 저장
-    UNIQUE(article_id, company_name, event_type) 기반 upsert
+    UNIQUE(article_id, company_name, event_type) 기반 upsert로 중복 방어
     """
-
     data = {
         "article_id": article_id,
         "company_name": sig["company_name"],
@@ -123,12 +113,11 @@ def insert_signal_safe(article_id, sig):
 
 
 # ---------------------------------------------------
-# 5️⃣ 전체 실행
+# 5️⃣ 전체 실행 (2단계 프롬프트 체이닝)
 # ---------------------------------------------------
 def run_signal_scout():
-<<<<<<< HEAD
     """
-    Signal Scout 전체 실행 로직 (2단계 프롬프트 체이닝)
+    Signal Scout 전체 실행 로직 (2단계 프롬프트 체이닝 + Market Radar 확장)
 
     [Step 1] is_relevant_article: 이진 분류기
       → False → scout_status = 'irrelevant' 마킹 후 SKIP
@@ -136,15 +125,14 @@ def run_signal_scout():
       → True  → Step 2 진행
 
     [Step 2] extract_signals: 무거운 시그널 추출 프롬프트
-      → signals 테이블에 저장
+      → confidence 0.7 미만 시그널은 필터링
+      → companies 테이블에 기업 존재 보장
+      → signals 테이블에 upsert 저장
       → scout_status = 'done' 으로 마킹
+      → 예외 발생 시 'pending'으로 복구 (재처리 가능하게)
     """
 
-    print("🚀 Signal Scout 시작")
-=======
-
     print("🚀 Signal Scout 시작 (Market Radar 확장)")
->>>>>>> main
 
     articles = get_pending_articles()
 
@@ -153,7 +141,6 @@ def run_signal_scout():
         return
 
     for article in articles:
-<<<<<<< HEAD
         article_id = article["id"]
         title = article.get("title", "")
         content = article.get("content", "")
@@ -178,41 +165,33 @@ def run_signal_scout():
         # ============================================================
         print(f"  ✅ 관련 기사 확인 → 시그널 추출 시작")
 
-        # 상태 변경 → analyzing
-        update_article_status(article_id, "analyzing")
-=======
         try:
-            update_article_status(article["id"], "analyzing")
+            update_article_status(article_id, "analyzing")
 
             result = extract_signals(article)
->>>>>>> main
 
+            # 시그널이 없거나 GPT가 빈 결과를 반환한 경우
             if not result or "signals" not in result:
-                update_article_status(article["id"], "done")
+                print(f"  ℹ️ 시그널 없음 (GPT 결과 비어있음)")
+                update_article_status(article_id, "done")
                 continue
 
+            saved_count = 0
             for sig in result["signals"]:
-<<<<<<< HEAD
-                insert_signal(article_id, sig)
-            print(f"  💡 시그널 {len(result['signals'])}건 저장 완료")
-        else:
-            print(f"  ℹ️ 시그널 없음 (GPT 결과 비어있음)")
-
-        # 상태 변경 → done
-        update_article_status(article_id, "done")
-=======
-
+                # confidence 기준 미달 시그널 필터링
                 if sig.get("confidence", 1) < 0.7:
                     continue
 
                 ensure_company_exists(sig["company_name"])
-                insert_signal_safe(article["id"], sig)
+                insert_signal_safe(article_id, sig)
+                saved_count += 1
 
-            update_article_status(article["id"], "done")
+            print(f"  💡 시그널 {saved_count}건 저장 완료")
+            update_article_status(article_id, "done")
 
         except Exception as e:
-            print("❌ 처리 실패:", e)
-            update_article_status(article["id"], "pending")
->>>>>>> main
+            # 예외 발생 시 pending으로 복구 → 다음 루프에서 재처리 가능
+            print(f"  ❌ 처리 실패: {e}")
+            update_article_status(article_id, "pending")
 
     print("\n✅ Signal Scout 종료")

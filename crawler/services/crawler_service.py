@@ -1,7 +1,6 @@
 from datetime import timezone
 from crawlers.naver_news import NaverNewsCrawler
 from crawlers.daum_news import DaumNewsCrawler
-# google_news는 아키텍처 변경으로 비활성화 (2024-02-27)
 from services.article_service import process_article
 from repositories.keyword_repository import get_keywords
 from repositories.state_repository import (
