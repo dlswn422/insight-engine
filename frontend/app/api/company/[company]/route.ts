@@ -6,36 +6,42 @@ const supabase = createClient(
 );
 
 export async function GET(
-  req: Request,
-  { params }: { params: { company: string } }
+  request: Request,
+  { params }: { params: Promise<{ company: string }> }
 ) {
-  const company = decodeURIComponent(params.company);
+  try {
+    console.log("==== API START ====");
 
-  // 1️⃣ 점수 조회
-  const { data: dashboard } = await supabase
-    .from("v_main_dashboard")
-    .select("*")
-    .eq("company_name", company)
-    .single();
+    // 🔥 중요: await params
+    const resolvedParams = await params;
 
-  // 2️⃣ 최근 이벤트
-  const { data: events } = await supabase
-    .from("signals")
-    .select("event_type, impact_type, impact_strength, created_at")
-    .eq("company_name", company)
-    .order("created_at", { ascending: false })
-    .limit(10);
+    console.log("Resolved params:", resolvedParams);
 
-  // 3️⃣ 전략 조회
-  const { data: strategy } = await supabase
-    .from("action_recommendations")
-    .select("*")
-    .eq("company_name", company)
-    .single();
+    const rawCompany = resolvedParams.company;
 
-  return Response.json({
-    dashboard,
-    events,
-    strategy
-  });
+    console.log("Raw param:", rawCompany);
+
+    const company = decodeURIComponent(rawCompany).trim();
+
+    console.log("Decoded:", company);
+
+    // 최신 전략 조회
+    const { data: strategy } = await supabase
+      .from("action_recommendations")
+      .select("*")
+      .eq("company_name", company)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    console.log("Strategy:", strategy);
+    console.log("==== API END ====");
+
+    return Response.json({
+      strategy
+    });
+  } catch (err) {
+    console.error("🔥 API ERROR:", err);
+    return Response.json({ error: "Server Error" }, { status: 500 });
+  }
 }
