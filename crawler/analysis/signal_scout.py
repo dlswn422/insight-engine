@@ -1,5 +1,9 @@
 """
-OpenAI 호출 → Signal 추출
+OpenAI 호출 → Signal 추출 (확장 필드 반영 버전)
+
+- signal_category / industry_tag / trend_bucket / severity_level 포함
+- NULL 방지
+- 안전한 타입 정규화
 """
 
 import os
@@ -9,12 +13,18 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from analysis.signal_prompt import build_signal_prompt
 
+# ---------------------------------------------------
+# 🔐 환경 변수 로드
+# ---------------------------------------------------
 env_path = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=env_path)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+# ---------------------------------------------------
+# 📡 Signal 추출
+# ---------------------------------------------------
 def extract_signals(article: dict):
 
     try:
@@ -42,25 +52,39 @@ def extract_signals(article: dict):
 
         for sig in parsed["signals"]:
 
+            # ---------------------------------------------------
+            # 🔎 필수 필드 체크 (확장 버전)
+            # ---------------------------------------------------
             required = [
                 "company_name",
                 "event_type",
                 "impact_type",
                 "impact_strength",
-                "opportunity_type"
+                "signal_category",
+                "industry_tag",
+                "trend_bucket",
+                "severity_level"
             ]
 
             if not all(k in sig for k in required):
                 continue
 
-            validated.append({
-                "company_name": sig["company_name"].strip(),
-                "event_type": sig["event_type"],
-                "impact_type": sig["impact_type"].lower(),
-                "impact_strength": max(0, min(int(sig["impact_strength"]), 100)),
-                "opportunity_type": sig["opportunity_type"],
-                "confidence": float(sig.get("confidence", 0.8))
-            })
+            try:
+                validated.append({
+                    "company_name": sig["company_name"].strip(),
+                    "event_type": sig["event_type"].strip(),
+                    "impact_type": sig["impact_type"].lower(),
+                    "impact_strength": max(0, min(int(sig["impact_strength"]), 100)),
+                    "signal_category": sig["signal_category"],
+                    "industry_tag": sig["industry_tag"],
+                    "trend_bucket": sig["trend_bucket"],
+                    "severity_level": int(sig["severity_level"]),
+
+                    "confidence": float(sig.get("confidence", 0.8))
+                })
+
+            except Exception:
+                continue
 
         return {"signals": validated}
 

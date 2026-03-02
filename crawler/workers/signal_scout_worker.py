@@ -1,5 +1,5 @@
 """
-Signal Scout Worker (Market Radar 확장 버전)
+Signal Scout Worker (Market Radar 확장 버전 - 안정화 개선)
 
 역할:
 - pending 기사 조회
@@ -88,13 +88,17 @@ def insert_signal_safe(article_id, sig):
         "article_id": article_id,
         "company_name": sig["company_name"],
         "event_type": sig["event_type"],
-        "impact_type": sig["impact_type"],
-        "impact_strength": sig["impact_strength"],
-        "signal_category": sig.get("signal_category"),
-        "industry_tag": sig.get("industry_tag"),
-        "trend_bucket": sig.get("trend_bucket"),
-        "severity_level": sig.get("severity_level"),
-        "confidence": sig.get("confidence", 0.8),
+
+        # 타입 안정성 보강
+        "impact_type": sig["impact_type"].lower(),
+        "impact_strength": int(sig["impact_strength"]),
+
+        "signal_category": sig["signal_category"],
+        "industry_tag": sig["industry_tag"],
+        "trend_bucket": sig["trend_bucket"],
+        "severity_level": int(sig["severity_level"]),
+
+        "confidence": float(sig.get("confidence", 0.8)),
         "created_at": datetime.utcnow().isoformat()
     }
 
@@ -109,7 +113,7 @@ def insert_signal_safe(article_id, sig):
 # ---------------------------------------------------
 def run_signal_scout():
 
-    print("🚀 Signal Scout 시작 (Market Radar 확장)")
+    print("Signal Scout 시작 (Market Radar 확장)")
 
     articles = get_pending_articles()
 
@@ -125,6 +129,7 @@ def run_signal_scout():
 
             for sig in result["signals"]:
 
+                # confidence 필터
                 if sig.get("confidence", 1) < 0.7:
                     continue
 
