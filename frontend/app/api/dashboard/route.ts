@@ -1,31 +1,20 @@
-import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET() {
-  try {
-    const { data: industries } = await supabase
-      .from("industry_trend_summary")
-      .select("*")
-      .order("total_impact", { ascending: false })
+  const { data, error } = await supabase
+    .from("v_main_dashboard")
+    .select("*")
+    .or("risk_level.eq.HIGH,opportunity_level.eq.HIGH")
+    .order("risk_score", { ascending: false });
 
-    const { data: opportunities } = await supabase
-      .from("company_signal_summary")
-      .select("*")
-      .order("opportunity_score", { ascending: false })
-      .limit(5)
-
-    const { data: risks } = await supabase
-      .from("company_signal_summary")
-      .select("*")
-      .order("risk_score", { ascending: false })
-      .limit(5)
-
-    return NextResponse.json({
-      industries,
-      opportunities,
-      risks
-    })
-  } catch (error) {
-    return NextResponse.json({ error: "Dashboard fetch failed" }, { status: 500 })
+  if (error) {
+    return Response.json({ error }, { status: 500 });
   }
+
+  return Response.json(data);
 }
