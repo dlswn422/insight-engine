@@ -34,6 +34,12 @@ NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 
 # ==============================
+# DART Open API 설정
+# ==============================
+
+DART_API_KEY = os.getenv("DART_API_KEY")
+
+# ==============================
 # 스케줄링 설정
 # ==============================
 
