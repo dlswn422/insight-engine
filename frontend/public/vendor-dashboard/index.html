@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>신일팜글래스 B2B Intelligence System</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon"><i class="fas fa-flask"></i></div>
+    <div class="logo-text">
+      <span class="logo-main">신일팜글래스</span>
+      <span class="logo-sub">B2B Intelligence</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="nav-item active" data-section="overview" onclick="switchSection('overview')">
+      <i class="fas fa-th-large"></i>
+      <span>Overview</span>
+      <small>종합 상황판</small>
+    </a>
+    <a class="nav-item" data-section="reputation" onclick="switchSection('reputation')">
+      <i class="fas fa-chart-bar"></i>
+      <span>Reputation Monitor</span>
+      <small>평판 분석</small>
+    </a>
+    <a class="nav-item" data-section="customer" onclick="switchSection('customer')">
+      <i class="fas fa-users"></i>
+      <span>Customer Health</span>
+      <small>고객 현황</small>
+    </a>
+    <a class="nav-item" data-section="opportunity" onclick="switchSection('opportunity')">
+      <i class="fas fa-rocket"></i>
+      <span>Opportunity Pipeline</span>
+      <small>영업 기회</small>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="update-time">
+      <i class="fas fa-sync-alt"></i>
+      <span>최종 업데이트</span>
+      <strong id="lastUpdate"></strong>
+    </div>
+    <div class="version-badge">Ver 1.0</div>
+  </div>
+</div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<div class="main-content" id="mainContent">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <button class="sidebar-toggle" onclick="toggleSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div class="topbar-title" id="topbarTitle">종합 상황판</div>
+    <div class="topbar-right">
+      <div class="status-indicator">
+        <span class="status-dot pulse"></span>
+        <span>실시간 모니터링 중</span>
+      </div>
+      <div class="date-badge"><i class="far fa-calendar-alt"></i> <span id="currentDate"></span></div>
+    </div>
+  </div>
+
+  <!-- ===================== SECTION: OVERVIEW ===================== -->
+  <section class="section active" id="section-overview">
+    <div class="section-header">
+      <h1><i class="fas fa-th-large"></i> 전사 종합 상황판</h1>
+      <p>신일팜글래스 B2B Intelligence 핵심 KPI 실시간 현황</p>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-primary">
+        <div class="kpi-icon"><i class="fas fa-star"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">종합 평판 지수</div>
+          <div class="kpi-value">78.4<span class="kpi-unit">/100</span></div>
+          <div class="kpi-change positive"><i class="fas fa-arrow-up"></i> +3.2 (전월 대비)</div>
+        </div>
+        <div class="kpi-ring">
+          <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="#e2e8f0" stroke-width="2.5"/><circle cx="18" cy="18" r="15.9" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-dasharray="78.4 21.6" stroke-dashoffset="25" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <div class="kpi-card kpi-danger">
+        <div class="kpi-icon"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">이탈 위험 고객</div>
+          <div class="kpi-value">3<span class="kpi-unit">개사</span></div>
+          <div class="kpi-change negative"><i class="fas fa-arrow-up"></i> +1 (전월 대비)</div>
+        </div>
+        <div class="kpi-badge danger">긴급 관리 필요</div>
+      </div>
+
+      <div class="kpi-card kpi-warning">
+        <div class="kpi-icon"><i class="fas fa-exclamation-circle"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">주의 관찰 고객</div>
+          <div class="kpi-value">5<span class="kpi-unit">개사</span></div>
+          <div class="kpi-change neutral"><i class="fas fa-minus"></i> 유지</div>
+        </div>
+        <div class="kpi-badge warning">모니터링 강화</div>
+      </div>
+
+      <div class="kpi-card kpi-success">
+        <div class="kpi-icon"><i class="fas fa-lightbulb"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">신규 기회 건수</div>
+          <div class="kpi-value">12<span class="kpi-unit">건</span></div>
+          <div class="kpi-change positive"><i class="fas fa-arrow-up"></i> +4 (이번 주)</div>
+        </div>
+        <div class="kpi-badge success">즉시 영업 가능</div>
+      </div>
+
+      <div class="kpi-card kpi-info">
+        <div class="kpi-icon"><i class="fas fa-industry"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">총 관리 고객사</div>
+          <div class="kpi-value">47<span class="kpi-unit">개사</span></div>
+          <div class="kpi-change positive"><i class="fas fa-arrow-up"></i> +2 (신규 등록)</div>
+        </div>
+        <div class="kpi-badge info">제약/화장품</div>
+      </div>
+
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-icon"><i class="fas fa-file-medical"></i></div>
+        <div class="kpi-content">
+          <div class="kpi-label">DART 공시 모니터링</div>
+          <div class="kpi-value">28<span class="kpi-unit">건</span></div>
+          <div class="kpi-change positive"><i class="fas fa-arrow-up"></i> 이번 주 신규</div>
+        </div>
+        <div class="kpi-badge purple">자동 수집 중</div>
+      </div>
+    </div>
+
+    <!-- OVERVIEW CHARTS ROW -->
+    <div class="charts-row">
+      <div class="chart-card flex-2">
+        <div class="chart-header">
+          <h3><i class="fas fa-chart-line"></i> 고객 건강도 추이 (6개월)</h3>
+          <div class="chart-legend">
+            <span class="legend-dot green"></span>건강
+            <span class="legend-dot yellow"></span>주의
+            <span class="legend-dot red"></span>위험
+          </div>
+        </div>
+        <div style="height:220px;"><canvas id="healthTrendChart"></canvas></div>
+      </div>
+
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-chart-pie"></i> 고객 건강도 분포</h3>
+        </div>
+        <div style="height:220px;"><canvas id="healthDistChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ALERT TABLE -->
+    <div class="alert-section">
+      <div class="section-title-row">
+        <h3><i class="fas fa-bell"></i> 이번 주 핵심 알림</h3>
+        <span class="badge-count">6건</span>
+      </div>
+      <div class="alert-list">
+        <div class="alert-item alert-red">
+          <div class="alert-icon"><i class="fas fa-exclamation-circle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">한미약품 – 이탈 위험도 87% 감지</div>
+            <div class="alert-desc">경쟁사 접촉 정황 + 발주량 -23% + 담당자 교체</div>
+          </div>
+          <div class="alert-time">2시간 전</div>
+          <button class="alert-btn" onclick="switchSection('customer')">상세보기</button>
+        </div>
+        <div class="alert-item alert-red">
+          <div class="alert-icon"><i class="fas fa-exclamation-circle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">동아ST – 이탈 위험도 79% 감지</div>
+            <div class="alert-desc">입찰 불참 2회 + 품질 클레임 1건 접수</div>
+          </div>
+          <div class="alert-time">5시간 전</div>
+          <button class="alert-btn" onclick="switchSection('customer')">상세보기</button>
+        </div>
+        <div class="alert-item alert-yellow">
+          <div class="alert-icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">보령제약 – 임상 3상 진입 확인</div>
+            <div class="alert-desc">신규 바이알 수요 예측 +40% → 영업 접촉 권장</div>
+          </div>
+          <div class="alert-time">1일 전</div>
+          <button class="alert-btn" onclick="switchSection('opportunity')">기회 등록</button>
+        </div>
+        <div class="alert-item alert-green">
+          <div class="alert-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">종근당 – 공장 착공 DART 공시</div>
+            <div class="alert-desc">충북 오창 신규 공장 → 앰플 수요 1,200만 개/년 예상</div>
+          </div>
+          <div class="alert-time">2일 전</div>
+          <button class="alert-btn" onclick="switchSection('opportunity')">기회 등록</button>
+        </div>
+        <div class="alert-item alert-yellow">
+          <div class="alert-icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">녹십자 – 평판 지수 하락 감지</div>
+            <div class="alert-desc">최근 2주 미디어 부정 기사 +15건 급증</div>
+          </div>
+          <div class="alert-time">3일 전</div>
+          <button class="alert-btn" onclick="switchSection('reputation')">분석보기</button>
+        </div>
+        <div class="alert-item alert-green">
+          <div class="alert-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="alert-body">
+            <div class="alert-title">코스맥스 – 화장품 앰플 신규 라인 증설</div>
+            <div class="alert-desc">설비투자 공시 확인 → 즉시 접촉 필요</div>
+          </div>
+          <div class="alert-time">4일 전</div>
+          <button class="alert-btn" onclick="switchSection('opportunity')">기회 등록</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: REPUTATION ===================== -->
+  <section class="section" id="section-reputation">
+    <div class="section-header">
+      <h1><i class="fas fa-chart-bar"></i> Reputation Monitor</h1>
+      <p>신일팜글래스 미디어·재무·내부 평판 종합 분석</p>
+    </div>
+
+    <!-- 평판 지수 카드 -->
+    <div class="rep-score-row">
+      <div class="rep-score-card">
+        <div class="rep-score-label">미디어 평판</div>
+        <div class="rep-score-gauge">
+          <canvas id="gaugeMedia"></canvas>
+        </div>
+        <div class="rep-score-value" id="val-media">82<span>/100</span></div>
+        <div class="rep-score-trend positive"><i class="fas fa-arrow-up"></i> +4.1</div>
+      </div>
+      <div class="rep-score-card">
+        <div class="rep-score-label">재무 건전성</div>
+        <div class="rep-score-gauge">
+          <canvas id="gaugeFinance"></canvas>
+        </div>
+        <div class="rep-score-value" id="val-finance">71<span>/100</span></div>
+        <div class="rep-score-trend warning"><i class="fas fa-minus"></i> 보통</div>
+      </div>
+      <div class="rep-score-card">
+        <div class="rep-score-label">내부 평판</div>
+        <div class="rep-score-gauge">
+          <canvas id="gaugeInternal"></canvas>
+        </div>
+        <div class="rep-score-value" id="val-internal">84<span>/100</span></div>
+        <div class="rep-score-trend positive"><i class="fas fa-arrow-up"></i> +2.3</div>
+      </div>
+      <div class="rep-score-card highlight">
+        <div class="rep-score-label">종합 평판 지수</div>
+        <div class="rep-score-gauge">
+          <canvas id="gaugeTotal"></canvas>
+        </div>
+        <div class="rep-score-value large" id="val-total">78<span>/100</span></div>
+        <div class="rep-score-trend positive"><i class="fas fa-arrow-up"></i> +3.2</div>
+      </div>
+    </div>
+
+    <!-- 차트 영역 -->
+    <div class="charts-row">
+      <div class="chart-card flex-2">
+        <div class="chart-header">
+          <h3><i class="fas fa-chart-line"></i> 감성 트렌드 분석 (12개월)</h3>
+          <div class="chart-tabs">
+            <button class="tab-btn active" onclick="switchRepTab('sentiment', this)">감성 분석</button>
+            <button class="tab-btn" onclick="switchRepTab('media', this)">미디어 노출</button>
+          </div>
+        </div>
+        <div style="height:240px;"><canvas id="sentimentTrendChart"></canvas></div>
+      </div>
+
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-newspaper"></i> 미디어 카테고리</h3>
+        </div>
+        <div style="height:240px;"><canvas id="mediaCategoryChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 워드클라우드 + 주요 이슈 -->
+    <div class="charts-row">
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-cloud"></i> 키워드 워드클라우드</h3>
+          <div class="tab-filter">
+            <button class="filter-btn active" onclick="switchWordCloud('positive', this)">긍정</button>
+            <button class="filter-btn" onclick="switchWordCloud('negative', this)">부정</button>
+            <button class="filter-btn" onclick="switchWordCloud('all', this)">전체</button>
+          </div>
+        </div>
+        <div class="wordcloud-container" id="wordcloudContainer"></div>
+      </div>
+
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-exclamation-circle"></i> 주요 이슈 TOP 5</h3>
+        </div>
+        <div class="issue-list" id="issueList">
+          <div class="issue-item issue-positive">
+            <div class="issue-rank">1</div>
+            <div class="issue-body">
+              <div class="issue-title">GMP 국제 인증 획득</div>
+              <div class="issue-meta"><span class="tag pos">긍정</span> 미디어 38건 · 2024.05.01</div>
+            </div>
+            <div class="issue-score">+12.4</div>
+          </div>
+          <div class="issue-item issue-positive">
+            <div class="issue-rank">2</div>
+            <div class="issue-body">
+              <div class="issue-title">수출 계약 400억 달성</div>
+              <div class="issue-meta"><span class="tag pos">긍정</span> 미디어 22건 · 2024.04.18</div>
+            </div>
+            <div class="issue-score">+8.7</div>
+          </div>
+          <div class="issue-item issue-positive">
+            <div class="issue-rank">3</div>
+            <div class="issue-body">
+              <div class="issue-title">친환경 앰플 라인 도입</div>
+              <div class="issue-meta"><span class="tag pos">긍정</span> 미디어 17건 · 2024.03.22</div>
+            </div>
+            <div class="issue-score">+5.2</div>
+          </div>
+          <div class="issue-item issue-negative">
+            <div class="issue-rank">4</div>
+            <div class="issue-body">
+              <div class="issue-title">납기 지연 민원 접수</div>
+              <div class="issue-meta"><span class="tag neg">부정</span> 내부 클레임 3건 · 2024.04.29</div>
+            </div>
+            <div class="issue-score">-3.8</div>
+          </div>
+          <div class="issue-item issue-negative">
+            <div class="issue-rank">5</div>
+            <div class="issue-body">
+              <div class="issue-title">원자재 수급 불안 우려</div>
+              <div class="issue-meta"><span class="tag neg">부정</span> 뉴스 8건 · 2024.05.10</div>
+            </div>
+            <div class="issue-score">-2.1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 재무 지표 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3><i class="fas fa-won-sign"></i> 재무 건전성 지표 (DART 공시 기반)</h3>
+      </div>
+      <div class="finance-grid">
+        <div class="finance-item">
+          <div class="fi-label">매출액</div>
+          <div class="fi-value">1,284억 원</div>
+          <div class="fi-change positive">+7.3% YoY</div>
+          <div class="fi-bar"><div class="fi-bar-fill" style="width:78%"></div></div>
+        </div>
+        <div class="finance-item">
+          <div class="fi-label">영업이익률</div>
+          <div class="fi-value">8.4%</div>
+          <div class="fi-change positive">+1.2%p</div>
+          <div class="fi-bar"><div class="fi-bar-fill" style="width:60%"></div></div>
+        </div>
+        <div class="finance-item">
+          <div class="fi-label">부채비율</div>
+          <div class="fi-value">142%</div>
+          <div class="fi-change negative">+12%p</div>
+          <div class="fi-bar warning"><div class="fi-bar-fill warning" style="width:55%"></div></div>
+        </div>
+        <div class="finance-item">
+          <div class="fi-label">유동비율</div>
+          <div class="fi-value">183%</div>
+          <div class="fi-change positive">+18%p</div>
+          <div class="fi-bar"><div class="fi-bar-fill" style="width:73%"></div></div>
+        </div>
+        <div class="finance-item">
+          <div class="fi-label">수출 비중</div>
+          <div class="fi-value">31.4%</div>
+          <div class="fi-change positive">+5.2%p</div>
+          <div class="fi-bar"><div class="fi-bar-fill" style="width:31%"></div></div>
+        </div>
+        <div class="finance-item">
+          <div class="fi-label">R&D 투자비</div>
+          <div class="fi-value">62억 원</div>
+          <div class="fi-change positive">+22% YoY</div>
+          <div class="fi-bar"><div class="fi-bar-fill" style="width:45%"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: CUSTOMER HEALTH ===================== -->
+  <section class="section" id="section-customer">
+    <div class="section-header">
+      <h1><i class="fas fa-users"></i> Customer Health Dashboard</h1>
+      <p>주요 고객사 건강도 실시간 모니터링</p>
+    </div>
+
+    <!-- 필터 & 검색 -->
+    <div class="filter-bar">
+      <div class="search-box">
+        <i class="fas fa-search"></i>
+        <input type="text" id="customerSearch" placeholder="고객사 검색..." oninput="filterCustomers()">
+      </div>
+      <div class="filter-btns">
+        <button class="filter-btn active" data-filter="all" onclick="filterByStatus('all', this)">전체 <span class="filter-count" id="cnt-all">47</span></button>
+        <button class="filter-btn red" data-filter="red" onclick="filterByStatus('red', this)">🔴 위험 <span class="filter-count" id="cnt-red">3</span></button>
+        <button class="filter-btn yellow" data-filter="yellow" onclick="filterByStatus('yellow', this)">🟡 주의 <span class="filter-count" id="cnt-yellow">5</span></button>
+        <button class="filter-btn green" data-filter="green" onclick="filterByStatus('green', this)">🟢 건강 <span class="filter-count" id="cnt-green">39</span></button>
+      </div>
+      <div class="sort-select">
+        <select onchange="sortCustomers(this.value)">
+          <option value="risk">위험도 순</option>
+          <option value="name">이름 순</option>
+          <option value="score">건강도 점수 순</option>
+          <option value="revenue">매출 기여 순</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 고객 테이블 -->
+    <div class="chart-card no-pad">
+      <table class="customer-table" id="customerTable">
+        <thead>
+          <tr>
+            <th>상태</th>
+            <th>고객사명</th>
+            <th>업종</th>
+            <th>건강도 점수</th>
+            <th>이탈 위험도</th>
+            <th>발주 추이</th>
+            <th>주요 신호</th>
+            <th>최근 접촉</th>
+            <th>상세</th>
+          </tr>
+        </thead>
+        <tbody id="customerTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 이탈 위험도 레이더 차트 -->
+    <div class="charts-row" style="margin-top:20px;">
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-spider"></i> 이탈 위험 고객 요인 분석</h3>
+        </div>
+        <div style="height:280px;"><canvas id="radarChart"></canvas></div>
+      </div>
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-chart-bar"></i> 발주량 변동 TOP 5 (전월 대비)</h3>
+        </div>
+        <div style="height:280px;"><canvas id="orderChangeChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: OPPORTUNITY PIPELINE ===================== -->
+  <section class="section" id="section-opportunity">
+    <div class="section-header">
+      <h1><i class="fas fa-rocket"></i> Opportunity Pipeline</h1>
+      <p>AI 기반 신규 영업 기회 자동 발굴 현황</p>
+    </div>
+
+    <!-- 기회 요약 KPI -->
+    <div class="opp-kpi-row">
+      <div class="opp-kpi">
+        <i class="fas fa-fire opp-icon red"></i>
+        <div class="opp-kpi-info">
+          <div class="opp-kpi-num">4건</div>
+          <div class="opp-kpi-label">긴급 (즉시 접촉)</div>
+        </div>
+      </div>
+      <div class="opp-kpi">
+        <i class="fas fa-bolt opp-icon yellow"></i>
+        <div class="opp-kpi-info">
+          <div class="opp-kpi-num">5건</div>
+          <div class="opp-kpi-label">높음 (1주 내 접촉)</div>
+        </div>
+      </div>
+      <div class="opp-kpi">
+        <i class="fas fa-clock opp-icon blue"></i>
+        <div class="opp-kpi-info">
+          <div class="opp-kpi-num">3건</div>
+          <div class="opp-kpi-label">보통 (추이 관찰)</div>
+        </div>
+      </div>
+      <div class="opp-kpi">
+        <i class="fas fa-won-sign opp-icon green"></i>
+        <div class="opp-kpi-info">
+          <div class="opp-kpi-num">약 38억</div>
+          <div class="opp-kpi-label">예상 연간 매출</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 기회 파이프라인 -->
+    <div class="pipeline-header">
+      <div class="pipeline-stage-headers">
+        <div class="ps-header ps-urgent">🔴 긴급 (4)</div>
+        <div class="ps-header ps-high">🟡 높음 (5)</div>
+        <div class="ps-header ps-medium">🔵 보통 (3)</div>
+      </div>
+    </div>
+    <div class="pipeline-board" id="pipelineBoard"></div>
+
+    <!-- 기회 소스 분석 차트 -->
+    <div class="charts-row" style="margin-top:24px;">
+      <div class="chart-card flex-1">
+        <div class="chart-header">
+          <h3><i class="fas fa-database"></i> 기회 발굴 소스</h3>
+        </div>
+        <div style="height:240px;"><canvas id="oppSourceChart"></canvas></div>
+      </div>
+      <div class="chart-card flex-2">
+        <div class="chart-header">
+          <h3><i class="fas fa-chart-bar"></i> 기회 유형별 예상 매출</h3>
+        </div>
+        <div style="height:240px;"><canvas id="oppRevenueChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- end main-content -->
+
+<!-- ===== CUSTOMER DETAIL MODAL ===== -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal-box" id="modalBox">
+    <button class="modal-close" onclick="closeModalDirect()"><i class="fas fa-times"></i></button>
+    <div class="modal-content" id="modalContent"></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
