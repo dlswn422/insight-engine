@@ -14,6 +14,11 @@ Signal Scout Worker (Market Radar 확장 버전 - 안정화 개선)
 - trend_bucket
 - severity_level
 """
+import sys
+import os
+
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from repositories.db import supabase
 from analysis.signal_scout import extract_signals
