@@ -1,29 +1,27 @@
 """
-config.py
+config/__init__.py
 
-- 환경변수 로드
-- 외부 서비스 키 관리
-- 전역 설정 값 정의
+역할:
+- 환경변수 로드 및 전역 설정 값 정의
+- 기존 config.py를 config 패키지(__init__.py)로 이전
 
-이 파일은 '환경 설정 전용' 파일입니다.
-다른 로직을 넣지 마세요.
+[왜 이렇게 했나]
+DART 설정 파일(dart_keywords.py)을 config/ 폴더 내에 두기 위해
+config를 패키지로 변환했습니다. 기존 코드베이스의 `from config import ...`
+임포트는 변경 없이 그대로 동작합니다.
 """
 
 import os
 from dotenv import load_dotenv
 
 # .env 파일 로드
-# 반드시 crawler 폴더 바로 아래에 .env 위치해야 함
 load_dotenv()
 
 # ==============================
 # Supabase 설정
 # ==============================
 
-# Supabase REST API URL
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-
-# Supabase publishable key
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # ==============================
@@ -43,5 +41,4 @@ DART_API_KEY = os.getenv("DART_API_KEY")
 # 스케줄링 설정
 # ==============================
 
-# 1시간 (초 단위)
-CRAWL_INTERVAL = 60 * 60
+CRAWL_INTERVAL = 60 * 60  # 1시간 (초 단위)
