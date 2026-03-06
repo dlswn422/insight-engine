@@ -178,38 +178,40 @@ async def process_disclosure(
     try:
         # ✅ Supabase 및 DART API 모두 동시 실행 수를 제한하여 'Server disconnected' 아웃바운드 에러를 방지합니다.
         async with semaphore:
-            rcept_no   = disclosure.get("rcept_no", "")
-            report_nm  = disclosure.get("report_nm", "")
-            corp_code  = disclosure.get("corp_code", "")
-            clean      = preprocess_title(report_nm)
+            rcept_no    = disclosure.get("rcept_no", "")
+            report_nm   = disclosure.get("report_nm", "")
+            corp_code   = disclosure.get("corp_code", "")
+            source_role = disclosure.get("source_role", "?")
+            clean       = preprocess_title(report_nm)
+            tag         = f"[{source_role}]"
     
             # 경로 0: 배제
             for kw in EXCLUDE_KEYWORDS:
                 if kw in clean:
-                    print(f"  ⏭️  SKIPPED: [{report_nm}] ('{kw}')")
+                    print(f"  ⏭️  SKIPPED {tag}: [{report_nm}] ('{kw}')")
                     await update_status(rcept_no, "SKIPPED")
                     return
     
             # 경로 1: 구조화 API
             for keyword, suffix in API_MAPPING_TABLE.items():
                 if keyword in clean:
-                    print(f"  📡 경로1: [{report_nm}]")
+                    print(f"  📡 경로1 {tag}: [{report_nm}]")
                     result = await fetch_via_structured_api(client, rcept_no, corp_code, suffix)
                     await update_status(rcept_no, "READY_FOR_ANALYSIS", scout_result=result)
-                    print(f"  ✅ READY: [{report_nm}]")
+                    print(f"  ✅ READY {tag}: [{report_nm}]")
                     return
     
             # 경로 2: HTML + LLM
             for kw in PARSE_KEYWORDS:
                 if kw in clean:
-                    print(f"  🧠 경로2: [{report_nm}]")
+                    print(f"  🧠 경로2 {tag}: [{report_nm}]")
                     result = await fetch_and_parse_html(client, rcept_no)
                     await update_status(rcept_no, "READY_FOR_ANALYSIS", scout_result=result)
-                    print(f"  ✅ READY: [{report_nm}]")
+                    print(f"  ✅ READY {tag}: [{report_nm}]")
                     return
     
             # 경로 3: UNMATCHED
-            print(f"  ❓ UNMATCHED: [{report_nm}]")
+            print(f"  ❓ UNMATCHED {tag}: [{report_nm}]")
             await update_status(rcept_no, "UNMATCHED")
 
     except Exception as e:
