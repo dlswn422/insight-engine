@@ -148,9 +148,9 @@ def should_promote_to_potential(sig: dict) -> bool:
 
 
 # ---------------------------------------------------
-# 5) companies: POTENTIAL upsert (OWN/CLIENT 보호)
+# 5) companies: GENERAL upsert (OWN/CLIENT/POTENTIAL 보호)
 # ---------------------------------------------------
-def upsert_potential_company(company_name: str) -> None:
+def upsert_general_company(company_name: str) -> None:
     company_name = (company_name or "").strip()
     if not company_name:
         return
@@ -165,32 +165,14 @@ def upsert_potential_company(company_name: str) -> None:
 
     now = datetime.utcnow().isoformat()
 
+    # 이미 존재하면 굳이 GENERAL로 덮어쓰거나 승격시키지 않음 (기존 등급 유지)
     if existing:
-        role = existing[0].get("company_role") or ROLE_GENERAL
-        if role in [ROLE_OWN, ROLE_CLIENT]:
-            return
-
-        # GENERAL/POTENTIAL/기타 → POTENTIAL 승격
-        try:
-            (
-                supabase.table("companies")
-                .update({"company_role": ROLE_POTENTIAL, "updated_at": now})
-                .eq("company_name", company_name)
-                .execute()
-            )
-        except Exception:
-            (
-                supabase.table("companies")
-                .update({"company_role": ROLE_POTENTIAL})
-                .eq("company_name", company_name)
-                .execute()
-            )
         return
 
     # 신규 insert (스키마 제약 대비 안전 삽입)
     payload = {
         "company_name": company_name,
-        "company_role": ROLE_POTENTIAL,
+        "company_role": ROLE_GENERAL,
         "dart_sync_status": "PENDING",
         "created_at": now,
         "updated_at": now,
@@ -200,7 +182,7 @@ def upsert_potential_company(company_name: str) -> None:
     except Exception:
         minimal = {
             "company_name": company_name,
-            "company_role": ROLE_POTENTIAL,
+            "company_role": ROLE_GENERAL,
             "created_at": now,
         }
         supabase.table("companies").insert(minimal).execute()
@@ -237,11 +219,11 @@ def run_signal_scout(limit: int = 20) -> None:
                 saved_cnt += 1
 
                 if should_promote_to_potential(sig):
-                    upsert_potential_company(sig.get("company_name", ""))
+                    upsert_general_company(sig.get("company_name", ""))
                     promoted_cnt += 1
 
             update_article_status(aid, "done")
-            print(f"✅ done: {aid} (signals saved: {saved_cnt}, potential promoted: {promoted_cnt})")
+            print(f"✅ done: {aid} (signals saved: {saved_cnt}, newly added as GENERAL: {promoted_cnt})")
 
         except Exception as e:
             print("❌ 처리 실패:", aid, e)

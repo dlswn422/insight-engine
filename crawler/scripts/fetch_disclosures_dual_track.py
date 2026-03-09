@@ -31,7 +31,7 @@ def load_track_a() -> list[dict]:
     result = (
         supabase
         .table("managed_clients")
-        .select("corp_code, client_name")
+        .select("corp_code, company_name")
         .not_.is_("corp_code", "null")
         .execute()
     )
@@ -48,9 +48,9 @@ def load_track_b() -> list[dict]:
         .not_.is_("dart_corp_code", "null")
         .execute()
     )
-    # 필드명을 트랙 A와 통일 (corp_code, client_name)
+    # 필드명을 트랙 A와 통일 (corp_code, company_name)
     return [
-        {"corp_code": row["dart_corp_code"], "client_name": row["company_name"]}
+        {"corp_code": row["dart_corp_code"], "company_name": row["company_name"]}
         for row in (result.data or [])
     ]
 
@@ -101,7 +101,7 @@ async def fetch_track(companies: list[dict], source_role: str) -> tuple[int, int
 
     for company in companies:
         corp_code   = company["corp_code"]
-        client_name = company.get("client_name", corp_code)
+        company_name = company.get("company_name", corp_code)
 
         # dart_service.fetch_recent_disclosures는 동기 함수 — to_thread로 감쌈
         disclosures = await asyncio.to_thread(
@@ -123,7 +123,7 @@ async def fetch_track(companies: list[dict], source_role: str) -> tuple[int, int
         total_fetched += len(disclosures)
         total_saved   += saved
 
-        print(f"  {label} '{client_name}' → {len(disclosures)}건 수집 / {saved}건 신규 적재")
+        print(f"  {label} '{company_name}' → {len(disclosures)}건 수집 / {saved}건 신규 적재")
 
     return total_fetched, total_saved
 
