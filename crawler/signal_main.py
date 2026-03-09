@@ -9,4 +9,4 @@ crawler/signal_main.py
 from workers.signal_scout_worker import run_signal_scout
 
 if __name__ == "__main__":
-    run_signal_scout()
+    run_signal_scout(limit=20)
