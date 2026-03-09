@@ -5,10 +5,6 @@ config/__init__.py
 - 환경변수 로드 및 전역 설정 값 정의
 - 기존 config.py를 config 패키지(__init__.py)로 이전
 
-[왜 이렇게 했나]
-DART 설정 파일(dart_keywords.py)을 config/ 폴더 내에 두기 위해
-config를 패키지로 변환했습니다. 기존 코드베이스의 `from config import ...`
-임포트는 변경 없이 그대로 동작합니다.
 """
 
 import os

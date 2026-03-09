@@ -34,10 +34,10 @@ def load_industry_targets() -> dict[str, str]:
     """
     industry_targets 테이블의 모든 기업을 조회합니다.
     Returns:
-        dict: { corp_code: corp_name }
+        dict: { corp_code: company_name }
     """
-    result = supabase.table("industry_targets").select("corp_code, corp_name").execute()
-    return {row["corp_code"]: row["corp_name"] for row in (result.data or [])}
+    result = supabase.table("industry_targets").select("corp_code, company_name").execute()
+    return {row["corp_code"]: row["company_name"] for row in (result.data or [])}
 
 
 # ── Step 2: companies 대조 및 POTENTIAL 업데이트 ──────────────────

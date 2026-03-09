@@ -25,7 +25,7 @@ import sys
 import os
 import time
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,7 +37,7 @@ from config.dart_keywords import TARGET_KSIC_CODES
 
 DART_COMPANY_URL = "https://opendart.fss.or.kr/api/company.json"
 RATE_LIMIT_SLEEP  = 0.5   # 초/건 (DART 무료 계정 Rate Limit 방어)
-BATCH_SIZE        = 8000  # 1회 실행 시 처리할 기업 수
+BATCH_SIZE        = 30000  # 1회 실행 시 처리할 기업 수
 
 # 커서 파일 경로 (이 스크립트와 같은 디렉토리에 저장)
 CURSOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync_cursor.json")
@@ -46,7 +46,7 @@ CURSOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync_cur
 # ── 커서 유틸 ────────────────────────────────────────────────────
 
 def load_cursor() -> int:
-    """마지막으로 처리한 인덱스를 커서 파일에서 읽습니다. 파일이 없으면 0 반환."""
+    """마지막으로 처리한 인덱스를 커서 파일에서 읽습니다. 파일이 없으면 0 반환."""  
     if os.path.exists(CURSOR_FILE):
         with open(CURSOR_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -104,13 +104,29 @@ def record_to_industry_targets(corp_code: str, corp_name: str, ksic_code: str):
     supabase.table("industry_targets").upsert(
         {
             "corp_code":     corp_code,
-            "corp_name":     corp_name,
-            "ksic_code":     ksic_code,
-            "discovered_at": datetime.now(timezone.utc).isoformat(),
+            "company_name":  corp_name,
+            "industry_code": ksic_code,
+            "updated_at":    datetime.now(timezone.utc).isoformat(), # updated_at 필드를 갱신 시점으로 기록
         },
         on_conflict="corp_code",
-        ignore_duplicates=True,
+        ignore_duplicates=False,  # 기존 데이터 업데이트를 위해 False로 변경
     ).execute()
+
+
+def cleanup_stale_targets():
+    """
+    전체 순회가 끝난 후 호출되어, DB 내의 업종이 변경되거나 DART 목록에서 지워진
+    만료된 기업 데이터를 삭제합니다. (기준: updated_at 이 최근 7일 이상 갱신되지 않은 경우)
+    """
+    try:
+        threshold_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        res = supabase.table("industry_targets").delete().lt("updated_at", threshold_date).execute()
+        
+        # supabase client response handling logic for postgrest-py
+        deleted_count = len(res.data) if hasattr(res, 'data') and res.data else 0
+        print(f"[cleanup] 오랫동안 갱신되지 않은 더미 기업 {deleted_count}개를 DB에서 삭제했습니다.")
+    except Exception as e:
+        print(f"  ⚠️  [cleanup] 만료 데이터 삭제 중 오류 발생: {e}")
 
 
 # ── 메인 실행 ─────────────────────────────────────────────────────
@@ -139,6 +155,7 @@ def run():
 
     if start_idx >= total_count:
         print("[sync_industry_targets] 전체 순회 완료 상태입니다. 커서를 초기화하고 다음 실행에서 처음부터 시작합니다.")
+        cleanup_stale_targets()
         reset_cursor()
         return
 
@@ -179,7 +196,8 @@ def run():
     # 커서 저장: 다음 실행 시 이어서 시작
     next_start = end_idx
     if next_start >= total_count:
-        print("\n[sync_industry_targets] 전체 순회 완료!")
+        print("\n[sync_industry_targets] 전체 순회 완료! 과거 더미 데이터 청소를 시작합니다...")
+        cleanup_stale_targets()
         reset_cursor()
     else:
         save_cursor(next_start)
