@@ -31,7 +31,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 BATCH_SIZE      = 100
-CONCURRENT_LIMIT = 5
+CONCURRENT_LIMIT = 3   # 3개 동시 실행 × 2초 대기 = 분당 약 90회 (100회 제한 안전 수준)
 API_URL_BASE    = "https://opendart.fss.or.kr/api"
 
 
@@ -77,7 +77,7 @@ async def fetch_via_structured_api(
     url = f"{API_URL_BASE}/{api_suffix}.json"
     params = {"crtfc_key": DART_API_KEY, "corp_code": corp_code, "rcept_no": rcept_no}
 
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(2.0)  # 3 workers × (60s / 2s) = 분당 90회
 
     try:
         response = await client.get(url, params=params, timeout=15.0)
@@ -93,7 +93,7 @@ async def fetch_via_structured_api(
 
 # ── 경로 2: HTML 파싱 + LLM ──────────────────────────────
 async def fetch_and_parse_html(client: httpx.AsyncClient, rcept_no: str) -> dict:
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(2.0)  # 3 workers × (60s / 2s) = 분당 90회
 
     # ZIP 다운로드
     try:

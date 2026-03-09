@@ -9,13 +9,13 @@ Signal Scout Worker (Option2 + B안: event_hash 중복 방지)
   - OWN/CLIENT는 절대 덮어쓰기 X
 - 기사 상태: pending -> analyzing -> done
 """
+from __future__ import annotations
+
 import sys
 import os
 
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from __future__ import annotations
 
 from datetime import datetime
 import hashlib
