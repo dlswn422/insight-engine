@@ -17,7 +17,7 @@ from analysis.signal_prompt import build_signal_prompt
 # ---------------------------------------------------
 # 🔐 환경 변수 로드
 # ---------------------------------------------------
-env_path = Path(__file__).resolve().parents[1] / ".env"
+env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
