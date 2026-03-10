@@ -116,10 +116,10 @@ def record_to_industry_targets(corp_code: str, corp_name: str, ksic_code: str):
 def cleanup_stale_targets():
     """
     전체 순회가 끝난 후 호출되어, DB 내의 업종이 변경되거나 DART 목록에서 지워진
-    만료된 기업 데이터를 삭제합니다. (기준: updated_at 이 최근 7일 이상 갱신되지 않은 경우)
+    만료된 기업 데이터를 삭제합니다. (기준: updated_at 이 최근 180일 이상 갱신되지 않은 경우)
     """
     try:
-        threshold_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        threshold_date = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
         res = supabase.table("industry_targets").delete().lt("updated_at", threshold_date).execute()
         
         # supabase client response handling logic for postgrest-py
