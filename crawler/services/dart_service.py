@@ -162,7 +162,11 @@ def fetch_recent_disclosures(
     """
     DISCLOSURE_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
 
-    # 시작일 기본값: 7일 전
+    # ⚙️ 수집 기간 기본값: 7일 전
+    # 더 넓은 기간이 필요하면 이 숫자를 조정하거나,
+    # 호출 시 bgn_de 파라미터를 직접 넘기세요.
+    # 예) fetch_recent_disclosures(api_key, corp_code, bgn_de="20250101")
+    # 예) timedelta(days=30) 으로 변경하면 30일치 수집
     if not bgn_de:
         bgn_de = (datetime.today() - timedelta(days=7)).strftime("%Y%m%d")
 
