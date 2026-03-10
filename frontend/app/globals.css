@@ -105,6 +105,16 @@ a, button { cursor: pointer; }
   padding: 2px 8px;
   border-radius: 20px;
 }
+.sidebar-nav button.nav-item {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+}
 
 /* ========== MAIN CONTENT ========== */
 .main-content {
@@ -264,6 +274,44 @@ a, button { cursor: pointer; }
 .filter-btn.red.active { background: rgba(239,68,68,0.2); border-color: var(--danger); }
 .filter-btn.yellow.active { background: rgba(245,158,11,0.2); border-color: var(--warning); }
 .filter-btn.green.active { background: rgba(34,197,94,0.2); border-color: var(--success); }
+
+.donut-legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8892a4;
+  flex-wrap: wrap;
+}
+
+.donut-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.legend-dot.green {
+  background: #22c55e;
+}
+
+.legend-dot.yellow {
+  background: #f59e0b;
+}
+
+.legend-dot.red {
+  background: #ef4444;
+}
 
 /* ========== ALERT LIST ========== */
 .alert-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }

@@ -1,37 +1,74 @@
-export default function FilterBar() {
+import { customerList } from "../mockData/customerData";
+
+type StatusFilter = "all" | "red" | "yellow" | "green";
+
+interface FilterBarProps {
+  search: string;
+  setSearch: (value: string) => void;
+  statusFilter: StatusFilter;
+  setStatusFilter: (value: StatusFilter) => void;
+}
+
+export default function FilterBar({
+  search,
+  setSearch,
+  statusFilter,
+  setStatusFilter,
+}: FilterBarProps) {
+  const total = customerList.length;
+  const red = customerList.filter((c) => c.status === "red").length;
+  const yellow = customerList.filter((c) => c.status === "yellow").length;
+  const green = customerList.filter((c) => c.status === "green").length;
+
   return (
     <div className="filter-bar">
       <div className="search-box">
         <i className="fas fa-search"></i>
         <input
-          type="text"
           id="customerSearch"
+          type="text"
           placeholder="고객사 검색..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
       <div className="filter-btns">
-        <button className="filter-btn active" data-filter="all">
-          전체 <span className="filter-count" id="cnt-all">47</span>
+        <button
+          type="button"
+          className={`filter-btn ${statusFilter === "all" ? "active" : ""}`}
+          onClick={() => setStatusFilter("all")}
+        >
+          전체 <span className="filter-count">{total}</span>
         </button>
-        <button className="filter-btn red" data-filter="red">
-          🔴 위험 <span className="filter-count" id="cnt-red">3</span>
-        </button>
-        <button className="filter-btn yellow" data-filter="yellow">
-          🟡 주의 <span className="filter-count" id="cnt-yellow">5</span>
-        </button>
-        <button className="filter-btn green" data-filter="green">
-          🟢 건강 <span className="filter-count" id="cnt-green">39</span>
-        </button>
-      </div>
 
-      <div className="sort-select">
-        <select>
-          <option value="risk">위험도 순</option>
-          <option value="name">이름 순</option>
-          <option value="score">건강도 점수 순</option>
-          <option value="revenue">매출 기여 순</option>
-        </select>
+        <button
+          type="button"
+          className={`filter-btn red ${statusFilter === "red" ? "active" : ""}`}
+          onClick={() => setStatusFilter("red")}
+        >
+          🔴 위험 <span className="filter-count">{red}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`filter-btn yellow ${
+            statusFilter === "yellow" ? "active" : ""
+          }`}
+          onClick={() => setStatusFilter("yellow")}
+        >
+          🟡 주의 <span className="filter-count">{yellow}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`filter-btn green ${
+            statusFilter === "green" ? "active" : ""
+          }`}
+          onClick={() => setStatusFilter("green")}
+        >
+          🟢 건강 <span className="filter-count">{green}</span>
+        </button>
       </div>
     </div>
   );

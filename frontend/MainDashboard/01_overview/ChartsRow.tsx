@@ -108,9 +108,7 @@ export default function OverviewChartsRow() {
     const distChart = new Chart(distCanvasRef.current, {
       type: "doughnut",
       data: {
-        labels: overviewHealthDistribution.labels.map(
-          (label, idx) => `${label} (${overviewHealthDistribution.values[idx]})`
-        ),
+        labels: overviewHealthDistribution.labels,
         datasets: [
           {
             data: overviewHealthDistribution.values,
@@ -129,19 +127,10 @@ export default function OverviewChartsRow() {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        cutout: "65%",
+        cutout: "62%",
         plugins: {
           legend: {
             display: false,
-            labels: {
-              color: "#8892a4",
-              padding: 14,
-              boxWidth: 12,
-              font: {
-                size: 11,
-                family: "'Noto Sans KR', sans-serif",
-              },
-            },
           },
           tooltip: {
             backgroundColor: "#111827",
@@ -186,8 +175,23 @@ export default function OverviewChartsRow() {
           </h3>
         </div>
 
-        <div style={{ height: "220px" }}>
+        <div style={{ height: "185px" }}>
           <canvas ref={distCanvasRef}></canvas>
+        </div>
+
+        <div className="donut-legend">
+          <div className="donut-legend-item">
+            <span className="legend-dot green"></span>
+            <span>건강 (39)</span>
+          </div>
+          <div className="donut-legend-item">
+            <span className="legend-dot yellow"></span>
+            <span>주의 (5)</span>
+          </div>
+          <div className="donut-legend-item">
+            <span className="legend-dot red"></span>
+            <span>위험 (3)</span>
+          </div>
         </div>
       </div>
     </div>
