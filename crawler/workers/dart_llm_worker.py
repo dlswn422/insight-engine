@@ -1,26 +1,31 @@
 """
-workers/dart_scout_worker.py — DART 공시 LLM 분석 워커 (Bulk 처리 버전)
+workers/dart_llm_worker.py — DART 공시 Bulk LLM 분석 워커
 
 역할:
-    1. dart_disclosures 테이블에서 scout_status='PENDING'인 공시 목록을 가져옵니다.
-    2. 각 공시 제목을 분석하여 아래 3가지 경로로 분류합니다:
-       - SKIPPED   : 주주총회, 의결권 등 투자 판단과 무관한 행정 공시 → 분석 없이 건너뜀
-       - 원문 분석 : 타겟 키워드(계약, 합병, 소송 등)가 포함된 공시 → DART에서 원문 ZIP 다운로드
-                    → 텍스트 추출 → 【LLM에 묶음으로 전달】 → signals 테이블에 'dart' 출처로 저장
-       - UNMATCHED : 위 조건 모두 해당 없음 → 분석 건너뜀
+    dart_disclosures 테이블에서 scout_status='READY_FOR_LLM'인 공시를
+    LLM_CHUNK_SIZE 단위로 묶어서 LLM API를 1회만 호출하여 시그널을 추출합니다.
 
-    ※ Bulk(묶음) LLM 처리 전략:
-       키워드에 해당하는 공시를 LLM_CHUNK_SIZE 단위로 모아서 LLM API를 1회만 호출합니다.
-       예) LLM_CHUNK_SIZE=5 → 공시 5건 ZIP 다운로드(병렬) → LLM 1회 호출로 5건 동시 분석
-       이를 통해 LLM API 호출 횟수를 최대 (1/LLM_CHUNK_SIZE) 수준으로 줄입니다.
+    ※ 이 워커는 dart_classifier_worker.py가 먼저 실행하여 분류를 완료한
+       이후에 실행하는 것을 전제로 합니다.
+       dart_classifier_worker → (READY_FOR_LLM 생성) → dart_llm_worker
 
-    ※ DART API 호출 제한(100회/분)을 지키기 위해 동시 실행 수를 3개로 제한하고
-       각 요청마다 2초씩 대기합니다. (3개 × 60초 / 2초 = 분당 90회)
+    처리 흐름:
+        1) dart_disclosures에서 READY_FOR_LLM 공시를 LLM_CHUNK_SIZE건씩 꺼냄
+        2) 각 공시의 원문 ZIP을 DART API에서 병렬 다운로드 + 텍스트 추출
+        3) 추출된 텍스트를 하나의 프롬프트로 결합 → LLM API 1회 호출
+        4) 결과를 source_id 기준으로 각 공시에 매핑 → signals 테이블에 저장
+        5) 처리 완료된 공시 상태를 READY_FOR_ANALYSIS로 업데이트
+
+    ※ DART API 호출 제한(100회/분)을 지키기 위해
+       ZIP 다운로드 동시 요청 수를 CONCURRENT_LIMIT으로 제한하고
+       각 요청마다 2초씩 대기합니다.
+
+실행 방법:
+    crawler 폴더에서:  python workers/dart_llm_worker.py
 """
 
 import sys
 import os
-import re
 import asyncio
 import json
 import zipfile
@@ -34,59 +39,69 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 from repositories.db import supabase
-from config.dart_keywords import EXCLUDE_KEYWORDS, TARGET_KEYWORDS
 from config import DART_API_KEY
 from services.instant_signal_service import upsert_signal, upsert_general_company, should_promote_to_potential
-from analysis.signal_prompt import build_signal_prompt
 
 load_dotenv(os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/.env")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client  = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ⚙️  운영 파라미터 — 이 값들만 조절하면 동작 방식이 달라집니다.
 # ──────────────────────────────────────────────────────────────────────────────
 
-BATCH_SIZE       = 100   # DB에서 1회에 가져올 최대 공시 수 (PENDING → 처리 대상 풀)
-CONCURRENT_LIMIT = 3     # DART API ZIP 다운로드 동시 요청 수 (분당 100회 제한 준수)
 API_URL_BASE     = "https://opendart.fss.or.kr/api"
+CONCURRENT_LIMIT = 3     # DART API ZIP 다운로드 동시 요청 수 (분당 100회 제한 준수)
 
 # ★ 핵심 파라미터: LLM에 한 번에 묶어서 던질 공시 개수 ★
 # - 범위 권장: 3 ~ 10
-# - 너무 작으면(1~2): 기존 단건 처리와 차이 없음, API 호출 절감 효과 적음
-# - 적정값(5~7): LLM 집중력 유지 + API 호출 횟수 대폭 절감 (권장)
-# - 너무 크면(10+): LLM이 중간 공시를 대충 읽거나 출력 JSON이 잘릴 위험 있음
+# - 너무 작으면(1~2): API 호출 절감 효과 미미 (사실상 단건 처리와 동일)
+# - 적정값(5~7): LLM 집중력 유지 + API 호출 횟수 대폭 절감 ← 권장
+# - 너무 크면(10+): LLM이 중간 공시를 대충 읽거나 출력 JSON이 잘릴 위험
 # ▼ 이 숫자 하나만 바꾸면 묶음 크기가 전체에 반영됩니다 ▼
 LLM_CHUNK_SIZE   = 5     # 예: 5 → 공시 5건을 ZIP 다운로드 후 LLM 1회에 던짐
 
 # 공시 1건당 LLM에 전달할 최대 텍스트 길이 (단위: 글자)
 # LLM_CHUNK_SIZE × TEXT_LIMIT_PER_DOC = 실제 LLM에 전달되는 총 텍스트 길이
 # 예) 5 × 2000 = 10,000자 / 5 × 3000 = 15,000자 (gpt-4o-mini: ~12만 토큰 수용 가능)
-TEXT_LIMIT_PER_DOC = 2000   # 단건 시절 3000자 → Bulk 시에는 2000자로 낮춰 균형 유지
+TEXT_LIMIT_PER_DOC = 2000  # 느리면 줄이고, 분석 정밀도가 부족하면 늘리세요
 
 # confidence 임계값: 이 값 이상인 시그널만 signals 테이블에 저장합니다.
 # 공시는 공식 자료이므로 신뢰도를 높게 유지합니다.
+# 조절 범위 권장: 0.65 ~ 0.80
 CONFIDENCE_THRESHOLD = 0.70
 
+# 1회 실행 시 DB에서 꺼낼 최대 공시 수 (READY_FOR_LLM 상태)
+# LLM_CHUNK_SIZE 단위로 쪼개서 처리하므로 항상 쌓인 것보다 크게 잡아도 괜찮습니다.
+FETCH_LIMIT = 200
 
-def preprocess_title(report_nm: str) -> str:
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1) DB 조회 / 상태 업데이트
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_ready_disclosures(limit: int = FETCH_LIMIT) -> list[dict]:
     """
-    공시 제목에서 말머리([기재정정], [발행조건확정] 등)와 공백을 제거합니다.
-    키워드 매칭 정확도를 높이기 위해 전처리합니다.
+    dart_classifier_worker.py가 분류를 완료하여 READY_FOR_LLM 상태가 된
+    공시 목록을 DB에서 가져옵니다.
     """
-    title = re.sub(r'\[.*?\]', '', report_nm)  # [기재정정] 등 괄호 말머리 제거
-    title = re.sub(r'\s+', '', title)           # 공백 전체 제거
-    return title
+    result = (
+        supabase
+        .table("dart_disclosures")
+        .select("*")
+        .eq("scout_status", "READY_FOR_LLM")
+        .limit(limit)
+        .execute()
+    )
+    return result.data or []
 
 
-async def update_status(rcept_no: str, status: str, scout_result: dict | None = None):
+async def update_status(rcept_no: str, status: str, scout_result: dict | None = None) -> None:
     """
     공시의 처리 상태를 dart_disclosures 테이블에 업데이트합니다.
 
     status 값:
-        SKIPPED            - 분석 불필요 공시 (주주총회 등)
-        READY_FOR_ANALYSIS - 원문 파싱 및 LLM 분석 완료 (scout_result에 결과 저장)
-        UNMATCHED          - 타겟 키워드에 해당하지 않는 공시
+        READY_FOR_ANALYSIS - LLM 분석 완료 (scout_result에 결과 저장)
         ERROR              - 처리 중 예외 발생
     """
     payload: dict = {"scout_status": status}
@@ -100,30 +115,18 @@ async def update_status(rcept_no: str, status: str, scout_result: dict | None = 
     await asyncio.to_thread(_do_update)
 
 
-def get_pending_disclosures(limit: int = BATCH_SIZE) -> list[dict]:
-    """
-    아직 처리하지 않은(PENDING) 공시 목록을 DB에서 가져옵니다.
-    fetch_disclosures_dual_track.py가 새 공시를 PENDING으로 INSERT합니다.
-    """
-    result = (
-        supabase
-        .table("dart_disclosures")
-        .select("*")
-        .eq("scout_status", "PENDING")
-        .limit(limit)
-        .execute()
-    )
-    return result.data
-
+# ──────────────────────────────────────────────────────────────────────────────
+# 2) DART API 원문 다운로드 + 텍스트 추출
+# ──────────────────────────────────────────────────────────────────────────────
 
 async def download_and_parse_text(client: httpx.AsyncClient, rcept_no: str) -> str | None:
     """
     DART API에서 공시 원문 ZIP을 다운로드하고 핵심 텍스트를 추출합니다.
-    Bulk 처리를 위해 단독 LLM 호출 없이 텍스트만 반환하는 순수 파싱 함수입니다.
+    LLM 호출 없이 텍스트만 반환하는 순수 파싱 함수입니다.
 
     반환값:
         성공: 추출된 텍스트 문자열 (TEXT_LIMIT_PER_DOC 글자 이하로 잘림)
-        실패: None
+        실패: None (호출 측에서 ERROR 처리)
     """
     # DART API 호출 제한(100회/분)을 지키기 위해 요청마다 2초 대기합니다.
     await asyncio.sleep(2.0)
@@ -140,7 +143,7 @@ async def download_and_parse_text(client: httpx.AsyncClient, rcept_no: str) -> s
         print(f"    ⚠️  ZIP 다운로드 실패 ({rcept_no}): {e}")
         return None
 
-    # ── 2단계: ZIP 압축 해제 및 HTML 파일 추출 ─────────────────────
+    # ── 2단계: ZIP 압축 해제 및 HTML/XML 파일 추출 ─────────────────
     try:
         # DART API는 에러 발생 시 ZIP 대신 JSON을 반환하는 경우가 있습니다.
         try:
@@ -170,31 +173,34 @@ async def download_and_parse_text(client: httpx.AsyncClient, rcept_no: str) -> s
         soup  = BeautifulSoup(raw_bytes, 'html.parser')
         table = soup.find('table')
         # 공시 본문의 표가 핵심 내용을 담고 있습니다. 표가 없으면 전체 텍스트를 사용합니다.
-        table_text = (
+        text = (
             table.get_text(separator=' ', strip=True)
             if table
             else raw_bytes.decode('utf-8', errors='ignore')
         )
         # TEXT_LIMIT_PER_DOC 글자까지만 LLM에 전달합니다.
-        # 이 값을 늘리면 분석 정밀도 ↑ / LLM 토큰 비용 ↑
-        # 이 값을 줄이면 LLM 토큰 비용 ↓ / 긴 공시의 뒷부분이 잘릴 수 있음
-        return table_text[:TEXT_LIMIT_PER_DOC]
+        # 늘리면 정밀도 ↑ 비용 ↑ / 줄이면 비용 ↓ 긴 공시 뒷부분 잘림 ↑
+        return text[:TEXT_LIMIT_PER_DOC]
     except Exception as e:
         print(f"    ⚠️  HTML 파싱 실패 ({rcept_no}): {e}")
         return None
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3) Bulk 프롬프트 생성
+# ──────────────────────────────────────────────────────────────────────────────
 
 def build_bulk_prompt(items: list[dict]) -> str:
     """
     여러 개의 공시를 하나의 LLM 프롬프트로 묶어서 만듭니다.
 
     items 형식:
-        [{"idx": 1, "title": "공시명", "text": "공시 원문 텍스트"}, ...]
+        [{"idx": 1, "corp_name": "...", "title": "...", "text": "..."}, ...]
 
     LLM에게 각 항목을 독립적으로 분석하고, source_id에 idx를 담아
-    결과를 하나의 JSON 배열로 반환하도록 지시합니다.
+    하나의 JSON 배열로 반환하도록 지시합니다.
     """
-    # 각 공시를 구분선으로 나누어 하나의 문자열로 합칩니다.
+    # 각 공시를 구분선으로 나누어 하나의 텍스트 블록으로 합칩니다.
     docs_block = "\n\n".join([
         f"[공시 #{item['idx']}] 회사: {item['corp_name']} | 제목: {item['title']}\n{item['text']}"
         for item in items
@@ -212,7 +218,7 @@ def build_bulk_prompt(items: list[dict]) -> str:
 {{
   "results": [
     {{
-      "source_id": 1,        ← 공시 번호(#1, #2 … 와 반드시 매핑)
+      "source_id": 1,
       "signals": [
         {{
           "company_name": "기업명 (DART에 명시된 회사명 그대로)",
@@ -235,14 +241,16 @@ def build_bulk_prompt(items: list[dict]) -> str:
 =========================
 
 [강제 impact_type 규칙]
-- 항상 risk  : 리콜/불량/위해/클레임, 규제(허가취소/과징금), 소송/분쟁/횡령/배임, 실적급감/적자전환, 생산중단/공장사고
-- 항상 opportunity: 대규모 투자/증설, 수주/납품/장기계약/파트너십, 임상성공/허가/GMP인증, 성장방향 명확한 M&A
+- 항상 risk      : 리콜/불량/위해/클레임, 규제(허가취소/과징금), 소송/분쟁/횡령/배임,
+                   실적급감/적자전환, 생산중단/공장사고
+- 항상 opportunity: 대규모 투자/증설, 수주/납품/장기계약/파트너십,
+                    임상성공/허가/GMP인증, 성장 방향이 명확한 M&A
 
 [impact_strength 0~100 산정]
-- 0~19: 미미 (단순 언급, 행사, 인터뷰)
-- 20~39: 약함 (소규모 계약, 제한적 이슈)
-- 40~59: 중간 (중형 계약/투자, 의미 있는 변화)
-- 60~79: 큼 (대형 투자/증설, 핵심 인증/허가, 큰 실적 변화)
+- 0~19  : 미미 (단순 언급, 행사, 인터뷰)
+- 20~39 : 약함 (소규모 계약, 제한적 이슈)
+- 40~59 : 중간 (중형 계약/투자, 의미 있는 변화)
+- 60~79 : 큼   (대형 투자/증설, 핵심 인증/허가, 큰 실적 변화)
 - 80~100: 구조 변화급 (리콜/허가취소/대형소송 또는 초대형 투자·수주·M&A)
 
 [severity_level 1~5 산정]
@@ -250,14 +258,15 @@ def build_bulk_prompt(items: list[dict]) -> str:
 - 하드룰: 리콜/허가취소/공장사고/대형소송 → 최소 4
 
 [confidence 0~1 산정]
-- 0.80~1.0: 공시/정부/교차검증된 확실한 사실
+- 0.80~1.0 : 공시/정부/교차검증된 확실한 사실
 - 0.65~0.79: 운영 반영 가능 수준
 - 0.40~0.64: 추가 확인 필요
-- 공시 데이터는 공식 자료이므로 기본 confidence를 0.75 이상으로 설정하세요.
+- 공시는 공식 자료이므로 기본 confidence를 0.75 이상으로 설정하세요.
 
+규칙:
+- source_id는 반드시 공시 번호(#1, #2 ...)와 1:1 매핑
 - NULL/빈 문자열/필드 누락 금지
 - 반드시 JSON만 출력 (마크다운/코드블럭 금지)
-- source_id는 반드시 공시 번호(#1, #2...)와 1:1 매핑
 
 =========================
 📌 공시 목록 ({len(items)}건)
@@ -267,16 +276,19 @@ def build_bulk_prompt(items: list[dict]) -> str:
 """
 
 
-async def bulk_llm_analyze(chunk: list[dict]) -> list[dict]:
+# ──────────────────────────────────────────────────────────────────────────────
+# 4) Bulk LLM 호출
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def bulk_llm_analyze(items: list[dict]) -> dict[int, list]:
     """
     공시 여러 건을 하나의 LLM 호출로 분석합니다. (핵심 Bulk 처리 함수)
 
     처리 흐름:
-        1) chunk의 각 항목에 idx(1부터 시작)를 부여합니다.
+        1) items에 idx(1부터 시작)를 부여합니다.
         2) build_bulk_prompt()로 N건을 하나의 프롬프트로 결합합니다.
         3) LLM API를 단 1회 호출합니다.
         4) 반환된 JSON의 results 배열을 source_id 기준으로 파싱합니다.
-        5) 각 결과를 dict로 반환합니다: {source_id → signals 리스트}
 
     반환값:
         {1: [signal, ...], 2: [signal, ...], ...}  ← source_id(idx)별 signals 매핑
@@ -287,9 +299,8 @@ async def bulk_llm_analyze(chunk: list[dict]) -> list[dict]:
         return {}
 
     # idx는 1부터 시작하여 LLM 프롬프트의 #1, #2 ... 와 일치시킵니다.
-    indexed = [{"idx": i + 1, **item} for i, item in enumerate(chunk)]
-
-    prompt = build_bulk_prompt(indexed)
+    indexed = [{"idx": i + 1, **item} for i, item in enumerate(items)]
+    prompt  = build_bulk_prompt(indexed)
 
     try:
         def _call_llm():
@@ -297,21 +308,18 @@ async def bulk_llm_analyze(chunk: list[dict]) -> list[dict]:
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "Return only valid JSON. No markdown, no code block."},
-                    {"role": "user",   "content": prompt}
+                    {"role": "user",   "content": prompt},
                 ],
                 temperature=0.2,
                 response_format={"type": "json_object"},
             )
 
-        # extract_signals와 마찬가지로, 동기 LLM 호출을 스레드로 분리합니다.
+        # LLM 동기 호출을 스레드로 분리하여 비동기 루프를 블로킹하지 않습니다.
         response = await asyncio.to_thread(_call_llm)
         parsed   = json.loads(response.choices[0].message.content)
 
-        results_raw = parsed.get("results", [])
-
-        # source_id → signals 매핑 dict로 변환
         result_map: dict[int, list] = {}
-        for r in results_raw:
+        for r in parsed.get("results", []):
             sid     = int(r.get("source_id", 0))
             signals = r.get("signals", [])
             if sid > 0:
@@ -327,38 +335,38 @@ async def bulk_llm_analyze(chunk: list[dict]) -> list[dict]:
         return {}
 
 
-async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore, chunk: list[dict]):
+# ──────────────────────────────────────────────────────────────────────────────
+# 5) 청크 단위 처리
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore, chunk: list[dict]) -> int:
     """
-    타겟 키워드에 해당하는 공시 묶음(chunk)을 처리합니다.
+    LLM_CHUNK_SIZE 단위의 공시 묶음(chunk)을 처리합니다.
 
     처리 흐름:
-        1) chunk의 모든 공시에 대해 ZIP 다운로드 + 텍스트 추출을 병렬 실행합니다.
-        2) 텍스트 추출에 실패한 공시는 ERROR 처리합니다.
-        3) 성공한 공시들의 텍스트를 bulk_llm_analyze()에 묶어서 LLM 1회 호출합니다.
-        4) LLM 결과를 각 공시에 매핑하여 signals를 저장하고 상태를 업데이트합니다.
+        1) chunk 내 공시들의 ZIP을 병렬 다운로드 + 텍스트 추출
+        2) 텍스트 추출 실패 건 → ERROR 처리
+        3) 성공 건을 bulk_llm_analyze()에 묶어서 LLM 1회 호출
+        4) LLM 결과를 각 공시에 매핑하여 signals 저장 + 상태 업데이트
 
-    ※ semaphore는 DART API ZIP 다운로드 동시 요청 수를 제한합니다.
+    반환값:
+        이번 청크에서 저장된 시그널 총 개수
     """
     if not chunk:
-        return
+        return 0
 
-    print(f"\n  📦 Bulk 처리 시작: {len(chunk)}건 묶음 (LLM 1회 호출)")
-
-    # ── 1단계: chunk 내 모든 공시의 ZIP 다운로드 + 텍스트 추출 (병렬) ─
+    # ── 1단계: ZIP 병렬 다운로드 + 텍스트 추출 ──────────────────
     async def _safe_download(disclosure: dict) -> tuple[dict, str | None]:
         """semaphore 제한 아래에서 단건 다운로드를 실행합니다."""
         async with semaphore:
             text = await download_and_parse_text(client, disclosure["rcept_no"])
         return disclosure, text
 
-    download_tasks = [_safe_download(d) for d in chunk]
-    download_results = await asyncio.gather(*download_tasks, return_exceptions=True)
+    results     = await asyncio.gather(*[_safe_download(d) for d in chunk], return_exceptions=True)
+    llm_items   = []
+    failed_list = []
 
-    # 다운로드 성공/실패를 분리합니다.
-    llm_items   = []  # LLM에 넘길 항목 (텍스트 추출 성공 건)
-    failed_list = []  # 텍스트 추출 실패 건 (ERROR 처리 예정)
-
-    for i, res in enumerate(download_results):
+    for i, res in enumerate(results):
         if isinstance(res, Exception):
             failed_list.append((chunk[i], str(res)))
             continue
@@ -376,29 +384,29 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
     # 텍스트 추출 실패 건 → ERROR 상태로 기록
     for disclosure, err_msg in failed_list:
         rcept_no = disclosure.get("rcept_no", "")
-        print(f"    ❌ 텍스트 추출 실패 → ERROR: [{disclosure.get('report_nm', '')}] {err_msg}")
+        print(f"    ❌ 텍스트 추출 실패 → ERROR: [{disclosure.get('report_nm', '')}]")
         await update_status(rcept_no, "ERROR", scout_result={"error": err_msg})
 
     if not llm_items:
         print("    ⚠️  분석 가능한 공시 없음 (전부 텍스트 추출 실패)")
-        return
+        return 0
 
-    # ── 2단계: 성공한 공시들을 묶어서 LLM 1회 호출 ─────────────────
-    print(f"    🧠 LLM 호출: {len(llm_items)}건 공시 동시 분석")
+    # ── 2단계: 성공한 공시를 LLM에 묶어서 1회 호출 ───────────────
+    print(f"    🧠 LLM 호출: {len(llm_items)}건 동시 분석")
     result_map = await bulk_llm_analyze(llm_items)
 
-    # ── 3단계: LLM 결과를 각 공시에 매핑 + DB 저장 ─────────────────
+    # ── 3단계: LLM 결과를 각 공시에 매핑 → DB 저장 ─────────────
+    total_saved = 0
+
     for idx, item in enumerate(llm_items):
         source_id  = idx + 1  # LLM 프롬프트에서 사용한 #번호 (1부터 시작)
         disclosure = item["disclosure"]
         corp_name  = item["corp_name"]
         rcept_no   = disclosure.get("rcept_no", "")
         report_nm  = disclosure.get("report_nm", "")
-
-        signals = result_map.get(source_id, [])
+        signals    = result_map.get(source_id, [])
 
         if not signals:
-            # LLM이 해당 공시에서 시그널을 추출하지 못한 경우
             print(f"    ⚠️  신호 없음 (#{source_id}): [{report_nm}]")
             await update_status(rcept_no, "READY_FOR_ANALYSIS",
                                 scout_result={"source": "bulk_llm", "signals_saved": 0})
@@ -422,64 +430,30 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
                     upsert_general_company(sig.get("company_name", ""))
                     promoted += 1
 
-        scout_result = {
+        total_saved += saved
+        await update_status(rcept_no, "READY_FOR_ANALYSIS", scout_result={
             "source":             "bulk_llm",
-            "rcept_no":           rcept_no,
             "signals_saved":      saved,
             "potential_promoted": promoted,
-        }
-        await update_status(rcept_no, "READY_FOR_ANALYSIS", scout_result=scout_result)
-        print(f"    ✅ READY (#{source_id}): [{report_nm}] | 신호={saved}개, potential={promoted}개")
+        })
+        print(f"    ✅ DONE (#{source_id}): [{report_nm}] | 신호={saved}개, potential={promoted}개")
+
+    return total_saved
 
 
-async def process_disclosure_classify(
-    client: httpx.AsyncClient,
-    semaphore: asyncio.Semaphore,
-    disclosure: dict,
-) -> str:
+# ──────────────────────────────────────────────────────────────────────────────
+# 6) 메인 실행
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def run() -> None:
     """
-    공시 1건을 분류합니다. (LLM 호출 없이 키워드 매칭만 수행)
-
-    반환값:
-        "SKIP"      - EXCLUDE_KEYWORDS 해당 → 즉시 SKIPPED 처리 완료
-        "TARGET"    - TARGET_KEYWORDS 해당  → Bulk LLM 대상
-        "UNMATCHED" - 어느 키워드도 해당 없음 → UNMATCHED 처리 완료
-    """
-    rcept_no  = disclosure.get("rcept_no", "")
-    report_nm = disclosure.get("report_nm", "")
-    source_role = disclosure.get("source_role", "?")
-    clean     = preprocess_title(report_nm)
-    tag       = f"[{source_role}]"
-
-    # ── 경로 0: 투자 판단과 무관한 행정 공시 → 바로 제외 ──────────
-    for kw in EXCLUDE_KEYWORDS:
-        if kw in clean:
-            print(f"  ⏭️  SKIPPED {tag}: [{report_nm}] ('{kw}')")
-            await update_status(rcept_no, "SKIPPED")
-            return "SKIP"
-
-    # ── TARGET 경로: 타겟 키워드 포함 → Bulk 분석 대상으로 분류 ────
-    for kw in TARGET_KEYWORDS:
-        if kw in clean:
-            print(f"  🎯 TARGET {tag}: [{report_nm}] ('{kw}') → Bulk 큐 추가")
-            return "TARGET"
-
-    # ── UNMATCHED: 어느 키워드도 해당 없음 ────────────────────────
-    print(f"  ❓ UNMATCHED {tag}: [{report_nm}]")
-    await update_status(rcept_no, "UNMATCHED")
-    return "UNMATCHED"
-
-
-async def run():
-    """
-    DART 공시 워커 메인 함수.
+    DART Bulk LLM 분석 워커 메인 함수.
 
     실행 흐름:
-        1) dart_disclosures에서 PENDING 공시 최대 BATCH_SIZE(100)건 조회
-        2) 각 공시를 키워드 기준으로 분류 (SKIP / TARGET / UNMATCHED)
-        3) TARGET 공시를 LLM_CHUNK_SIZE 단위로 잘라 Bulk LLM 분석 실행
-           → 예) TARGET 15건, LLM_CHUNK_SIZE=5 → LLM 3회 호출
-        4) PENDING이 남아 있으면 계속 반복 처리
+        1) dart_disclosures에서 READY_FOR_LLM 공시 최대 FETCH_LIMIT건 조회
+        2) LLM_CHUNK_SIZE 단위로 잘라 Bulk LLM 분석 실행
+           예) READY_FOR_LLM 15건, LLM_CHUNK_SIZE=5 → LLM 3회 호출
+        3) READY_FOR_LLM이 남아 있으면 계속 반복
 
     ─────────────────────────────────────────────────────────────────
     ⚙️  묶음 개수 조절 방법:
@@ -491,71 +465,53 @@ async def run():
     ─────────────────────────────────────────────────────────────────
     """
     print("=" * 60)
-    print("[dart_scout_worker] Bulk LLM Scout 시작")
-    print(f"  배제 키워드: {len(EXCLUDE_KEYWORDS)}개 / 타겟 키워드: {len(TARGET_KEYWORDS)}개")
-    print(f"  LLM 묶음 크기: {LLM_CHUNK_SIZE}건 / confidence 임계값: {CONFIDENCE_THRESHOLD}")
+    print("[dart_llm_worker] Bulk LLM 분석 시작")
+    print(f"  LLM 묶음 크기 : {LLM_CHUNK_SIZE}건 (LLM_CHUNK_SIZE)")
+    print(f"  건당 텍스트  : {TEXT_LIMIT_PER_DOC}자 (TEXT_LIMIT_PER_DOC)")
+    print(f"  confidence 컷: {CONFIDENCE_THRESHOLD} (CONFIDENCE_THRESHOLD)")
     print("=" * 60)
 
-    total_processed = 0
+    total_ready     = 0
+    total_signals   = 0
     total_llm_calls = 0
     batch_num       = 0
 
-    # PENDING이 남아있지 않을 때까지 반복합니다.
+    # READY_FOR_LLM이 없을 때까지 반복합니다.
     while True:
-        disclosures = get_pending_disclosures()
+        disclosures = get_ready_disclosures()
         if not disclosures:
             if batch_num == 0:
-                print("[dart_scout_worker] PENDING 공시 없음.")
+                print("[dart_llm_worker] READY_FOR_LLM 공시 없음.")
+                print("  → dart_classifier_worker.py를 먼저 실행했는지 확인하세요.")
             break
 
-        batch_num       += 1
-        total_processed += len(disclosures)
-        print(f"\n[배치 {batch_num}] 처리 대상: {len(disclosures)}개 (누적: {total_processed}개)")
+        batch_num   += 1
+        total_ready += len(disclosures)
+        est_calls    = (len(disclosures) + LLM_CHUNK_SIZE - 1) // LLM_CHUNK_SIZE
+        print(f"\n[배치 {batch_num}] 분석 대상: {len(disclosures)}건 → LLM 호출 예상: {est_calls}회\n")
 
-        semaphore      = asyncio.Semaphore(CONCURRENT_LIMIT)
-        target_queue   = []  # 분류 결과 중 LLM 분석 대상 공시 저장소
+        semaphore = asyncio.Semaphore(CONCURRENT_LIMIT)
 
-        # ── Step A: 분류 (SKIP / TARGET / UNMATCHED) ──────────────
-        # 분류는 단순 키워드 매칭이므로 모든 공시를 동시에 처리해도 안전합니다.
         async with httpx.AsyncClient() as client:
-            classify_tasks = [
-                process_disclosure_classify(client, semaphore, d)
-                for d in disclosures
-            ]
-            classify_results = await asyncio.gather(*classify_tasks, return_exceptions=True)
-
-        for d, result in zip(disclosures, classify_results):
-            if isinstance(result, Exception):
-                print(f"  ❌ 분류 오류 [{d.get('report_nm', '?')}]: {result}")
-                continue
-            if result == "TARGET":
-                target_queue.append(d)
-
-        if not target_queue:
-            print(f"  ℹ️  LLM 분석 대상 없음 (전부 SKIP/UNMATCHED)")
-            continue
-
-        print(f"\n  📋 LLM 분석 대상: {len(target_queue)}건")
-        print(f"  🔢 LLM 호출 횟수: {len(target_queue)}건 ÷ {LLM_CHUNK_SIZE} = "
-              f"{(len(target_queue) + LLM_CHUNK_SIZE - 1) // LLM_CHUNK_SIZE}회 (예상)")
-
-        # ── Step B: TARGET 공시를 LLM_CHUNK_SIZE 단위로 잘라서 Bulk 분석 ─
-        # chunk 단위로 LLM API를 1회씩 호출합니다.
-        # LLM_CHUNK_SIZE를 바꾸면 여기서 자르는 기준이 달라집니다.
-        async with httpx.AsyncClient() as client:
-            for i in range(0, len(target_queue), LLM_CHUNK_SIZE):
-                chunk = target_queue[i: i + LLM_CHUNK_SIZE]
+            for i in range(0, len(disclosures), LLM_CHUNK_SIZE):
+                # ★ LLM_CHUNK_SIZE 단위로 공시를 잘라서 하나씩 Bulk 처리합니다.
+                # LLM_CHUNK_SIZE를 바꾸면 이 슬라이싱 크기가 달라집니다.
+                chunk     = disclosures[i: i + LLM_CHUNK_SIZE]
                 chunk_num = i // LLM_CHUNK_SIZE + 1
-                print(f"\n  [청크 {chunk_num}] {len(chunk)}건 처리 중...")
-                await process_chunk(client, semaphore, chunk)
+                print(f"  [청크 {chunk_num}/{est_calls}] {len(chunk)}건 처리 중...")
+                saved  = await process_chunk(client, semaphore, chunk)
+                total_signals   += saved
                 total_llm_calls += 1
 
     print("\n" + "=" * 60)
-    print("[dart_scout_worker] 완료")
+    print("[dart_llm_worker] 완료")
     if batch_num > 0:
-        print(f"  총 {batch_num}배치 / {total_processed}건 처리 / LLM 호출 {total_llm_calls}회")
-        estimated_single = total_processed  # 단건 처리 시 LLM 호출 횟수
-        print(f"  💡 절감 효과: 단건 처리 시 ~{estimated_single}회 → Bulk 처리 {total_llm_calls}회")
+        print(f"  처리 공시    : {total_ready}건")
+        print(f"  LLM 호출     : {total_llm_calls}회  (단건 처리 시 ~{total_ready}회였을 것)")
+        print(f"  저장된 시그널: {total_signals}개")
+        savings = total_ready - total_llm_calls
+        if savings > 0:
+            print(f"  💡 API 호출 절감: {savings}회 절약 ({savings/total_ready*100:.0f}%↓)")
     print("=" * 60)
 
 
