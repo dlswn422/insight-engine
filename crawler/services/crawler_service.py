@@ -1,13 +1,15 @@
 from datetime import timezone
 from crawlers.naver_news import NaverNewsCrawler
 from services.article_service import process_article
-from services.instant_signal_service import analyze_article_in_memory
+from services.batch_signal_service import analyze_batch  # ✅ 변경
 
 from repositories.keyword_repository import get_monitoring_keywords
 from repositories.state_repository import get_last_crawled_at, update_last_crawled_at
 
 USE_EXPANDED_KEYWORDS = False
 EXPAND_TERMS = ["바이알", "앰플", "유리용기", "세척", "탈알칼리", "제약", "화장품"]
+
+BATCH_SIZE = 15  # ✅ 15건 묶음
 
 
 def _build_keywords(base_rows: list[dict]) -> list[dict]:
@@ -41,9 +43,34 @@ def run_crawler():
     newest_article_time = None
 
     fetched_total = 0
-    analyzed_total = 0
+    saved_total = 0
+    batch_calls = 0
     signals_total = 0
     promoted_total = 0
+
+    # ✅ 15건 배치 버퍼: DB에는 저장하지 않는 title/description을 메모리로만 유지
+    batch_buf: list[dict] = []
+
+    def flush_batch(force: bool = False):
+        """
+        batch_buf가 BATCH_SIZE 이상이면 15건 단위로 처리
+        force=True면 남은 전부 처리(마지막 flush)
+        """
+        nonlocal batch_buf, batch_calls, signals_total, promoted_total
+
+        while len(batch_buf) >= BATCH_SIZE or (force and len(batch_buf) > 0):
+            chunk = batch_buf[:BATCH_SIZE] if len(batch_buf) >= BATCH_SIZE else batch_buf[:]
+            batch_buf = batch_buf[len(chunk):]
+
+            stats = analyze_batch(chunk)
+            batch_calls += 1
+            signals_total += stats["signals_saved"]
+            promoted_total += stats["potential_promoted"]
+
+            print(
+                f"🧠 batch analyzed: {stats['articles']} "
+                f"(signals={stats['signals_saved']}, potential={stats['potential_promoted']})"
+            )
 
     for kw in keywords:
         keyword = (kw.get("keyword") or "").strip()
@@ -71,24 +98,32 @@ def run_crawler():
             if not saved_row:
                 continue
 
-            analyzed_total += 1
+            saved_total += 1
 
-            # ✅ 즉시 분석: 메모리(title/description)로만 LLM 호출 → signals 저장
-            stats = analyze_article_in_memory(saved_row, article)
-            signals_total += stats["signals_saved"]
-            promoted_total += stats["potential_promoted"]
+            # ✅ 배치 버퍼에 메모리로만 저장
+            batch_buf.append({
+                "article_id": saved_row["id"],
+                "title": article.get("title", ""),
+                "description": article.get("description", ""),
+                "url": article.get("url", "")
+            })
 
-            # 로그는 메모리 title로 출력
-            print(f"✅ 처리 완료: {article.get('title','')[:60]}... "
-                  f"(signals={stats['signals_saved']}, potential={stats['potential_promoted']})")
+            # ✅ 15개 모이면 LLM 1회 호출
+            flush_batch(force=False)
 
+            # 최신 기사 시간 기록
             if newest_article_time is None or article_time > newest_article_time:
                 newest_article_time = article_time
+
+    # ✅ 남은 것까지 처리(마지막 flush)
+    flush_batch(force=True)
 
     if newest_article_time:
         print(f"🕒 마지막 수집 시간 업데이트: {newest_article_time}")
         update_last_crawled_at(newest_article_time)
 
     print("✅ 크롤링 종료")
-    print(f"📊 통계 | fetched={fetched_total}, analyzed={analyzed_total}, "
-          f"signals_saved={signals_total}, potential_promoted={promoted_total}")
+    print(
+        f"📊 통계 | fetched={fetched_total}, saved_meta={saved_total}, "
+        f"batch_calls={batch_calls}, signals_saved={signals_total}, potential_promoted={promoted_total}"
+    )

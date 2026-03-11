@@ -42,7 +42,7 @@ def extract_signals(article: dict):
             temperature=0.2,
             response_format={"type": "json_object"}
         )
-
+        
         parsed = json.loads(response.choices[0].message.content)
 
         if "signals" not in parsed:
