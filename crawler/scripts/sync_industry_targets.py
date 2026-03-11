@@ -37,7 +37,9 @@ from config.dart_keywords import TARGET_KSIC_CODES
 
 DART_COMPANY_URL = "https://opendart.fss.or.kr/api/company.json"
 RATE_LIMIT_SLEEP  = 0.5   # 초/건 (DART 무료 계정 Rate Limit 방어)
-BATCH_SIZE        = 30000  # 1회 실행 시 처리할 기업 수
+
+# 하루 1번 실행 시 약 3개월(90일)에 걸쳐 전체(~100,000개)를 순환
+BATCH_SIZE        = 1200 
 
 # 커서 파일 경로 (이 스크립트와 같은 디렉토리에 저장)
 CURSOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync_cursor.json")

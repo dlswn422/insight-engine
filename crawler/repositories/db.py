@@ -122,10 +122,12 @@ class _TableQuery:
         self,
         payload: Union[Dict[str, Any], List[Dict[str, Any]]],
         on_conflict: Optional[str] = None,
+        ignore_duplicates: bool = False,
     ) -> "_TableQuery":
         self._method = "POST"
         self._payload = payload
-        self._prefer = ["return=representation", "resolution=merge-duplicates"]
+        resolution = "ignore-duplicates" if ignore_duplicates else "merge-duplicates"
+        self._prefer = ["return=representation", f"resolution={resolution}"]
         self._on_conflict = on_conflict
         return self
 

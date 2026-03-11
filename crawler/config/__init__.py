@@ -34,6 +34,12 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 DART_API_KEY = os.getenv("DART_API_KEY")
 
 # ==============================
+# OpenAI 설정
+# ==============================
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# ==============================
 # 스케줄링 설정
 # ==============================
 

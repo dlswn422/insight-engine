@@ -26,16 +26,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import httpx
 from bs4 import BeautifulSoup
 from openai import OpenAI
-from dotenv import load_dotenv
 
 from repositories.db import supabase
 from config.dart_keywords import EXCLUDE_KEYWORDS, TARGET_KEYWORDS
-from config import DART_API_KEY
+from config import DART_API_KEY, OPENAI_API_KEY
 from services.instant_signal_service import upsert_signal, upsert_general_company, should_promote_to_potential
 from analysis.signal_scout import extract_signals
 
-load_dotenv(os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/.env")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 BATCH_SIZE       = 100  # 1회 실행 시 처리할 최대 공시 수

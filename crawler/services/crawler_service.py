@@ -10,10 +10,14 @@ services/crawler_service.py — 뉴스 수집 & 즉석 분석 서비스
        시그널(signals)과 잠재 기업 정보를 DB에 저장합니다.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from datetime import timezone
 from crawlers.naver_news import NaverNewsCrawler
 from services.article_service import process_article
-from services.instant_signal_service import analyze_article_in_memory
+from services.batch_signal_service import analyze_batch
 
 from repositories.keyword_repository import get_monitoring_keywords
 from repositories.state_repository import get_last_crawled_at, update_last_crawled_at
@@ -82,6 +86,9 @@ def run_crawler():
     signals_total  = 0  # LLM이 추출해서 저장한 시그널 수
     promoted_total = 0  # 이번 실행에서 GENERAL로 등록된 신규 기업 수
 
+    # 벌크 처리를 위해 새 기사들을 모아둘 리스트
+    pending_articles = []
+
     for kw in keywords:
         keyword = (kw.get("keyword") or "").strip()
         if not keyword:
@@ -106,23 +113,35 @@ def run_crawler():
             # DB에 URL, 발행일 등 메타 정보만 저장합니다. (제목/요약은 저장 안 함)
             saved_row = process_article(article)
             if not saved_row:
-                # URL이 없거나 이미 DB에 있는 기사면 None 반환 → 건너<br>뜁니다.
+                # URL이 없거나 이미 DB에 있는 기사면 None 반환 → 건너뜁니다.
                 continue
-
-            analyzed_total += 1
-
-            # 기사 제목/요약(메모리 상)을 LLM에 전달하여 시그널을 즉석 추출합니다.
-            # DB에서 다시 읽어오지 않고, 방금 API로 받은 데이터를 그대로 사용합니다.
-            stats = analyze_article_in_memory(saved_row, article)
-            signals_total  += stats["signals_saved"]
-            promoted_total += stats["potential_promoted"]
-
-            print(f"✅ 처리 완료: {article.get('title','')[:60]}... "
-                  f"(signals={stats['signals_saved']}, potential={stats['potential_promoted']})")
 
             # 이번 실행에서 처리한 기사 중 가장 최신 발행 시각을 갱신합니다.
             if newest_article_time is None or article_time > newest_article_time:
                 newest_article_time = article_time
+
+            # 벌크 처리를 위해 리스트에 적재
+            pending_articles.append({
+                "article_id": saved_row["id"],
+                "title": article.get("title", ""),
+                "description": article.get("description", ""),
+                "url": article.get("url", "")
+            })
+
+    # 모아둔 기사들을 15개 단위(BATCH_SIZE)로 묶어서 LLM Bulk 처리
+    BATCH_SIZE = 15
+    for i in range(0, len(pending_articles), BATCH_SIZE):
+        chunk = pending_articles[i:i + BATCH_SIZE]
+        print(f"🧠 기사 묶음(Bulk) LLM 분석 시작: {len(chunk)}건")
+
+        try:
+            stats = analyze_batch(chunk)
+            analyzed_total += stats.get("articles", 0)
+            signals_total  += stats.get("signals_saved", 0)
+            promoted_total += stats.get("general_registered", 0)
+            print(f"✅ 묶음 분석 완료: signals={stats.get('signals_saved', 0)}, general_registered={stats.get('general_registered', 0)}")
+        except Exception as e:
+            print(f"❌ 묶음 분석 중 오류 발생: {e}")
 
     # 마지막 수집 시각을 DB에 저장합니다. 다음 실행 시 이 시각 이후 기사만 수집합니다.
     if newest_article_time:
@@ -131,4 +150,4 @@ def run_crawler():
 
     print("✅ 크롤링 종료")
     print(f"📊 통계 | fetched={fetched_total}, analyzed={analyzed_total}, "
-          f"signals_saved={signals_total}, potential_promoted={promoted_total}")
+          f"signals_saved={signals_total}, general_registered={promoted_total}")
