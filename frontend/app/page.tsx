@@ -1,0 +1,32 @@
+"use client";
+
+import { useState } from "react";
+
+import DashboardLayout from "../MainDashboard/DashboardLayout";
+import OverviewSection from "../MainDashboard/01_overview/OverviewSection";
+import ReputationSection from "../MainDashboard/02_Reputation/ReputationSection";
+import CustomerHealthSection from "../MainDashboard/03_CustomerHealth/CustomerHealthSection";
+import OpportunitySection from "../MainDashboard/04_Opportunity/OpportunitySection";
+
+type SectionType =
+  | "overview"
+  | "reputation"
+  | "customer"
+  | "opportunity";
+
+export default function Page() {
+  const [activeSection, setActiveSection] =
+    useState<SectionType>("overview");
+
+  return (
+    <DashboardLayout
+      activeSection={activeSection}
+      setActiveSection={setActiveSection}
+    >
+      {activeSection === "overview" && <OverviewSection />}
+      {activeSection === "reputation" && <ReputationSection />}
+      {activeSection === "customer" && <CustomerHealthSection />}
+      {activeSection === "opportunity" && <OpportunitySection />}
+    </DashboardLayout>
+  );
+}
