@@ -1,298 +1,399 @@
-"use client";
+"use client"
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react"
 
-/* =========================
-   타입 정의
-========================= */
-
-interface Event {
-  event_type: string;
-  impact_type: string;
-  impact_strength: number;
-  created_at: string;
+type DashboardData = {
+  company_name: string
+  risk_score: number
+  opportunity_score: number
+  risk_level: string
+  opportunity_level: string
+  risk_delta: number
+  opportunity_delta: number
+  momentum_score: number
+  updated_at: string
 }
 
-interface RawStrategy {
-  actions: unknown;
-  updated_at: string;
+type EventItem = {
+  article_id?: string
+  company_name?: string
+  event_type: string
+  impact_type: string
+  impact_strength: number
+  severity_level?: number
+  confidence?: number
+  signal_category?: string
+  industry_tag?: string
+  trend_bucket?: string
+  created_at?: string
 }
 
-interface Dashboard {
-  risk_score: number;
-  opportunity_score: number;
-  risk_delta: number;
-  opportunity_delta: number;
+type StrategyAction = {
+  title?: string
+  owner?: string
+  timeline?: string
+  expected_impact?: string
+  evidence?: string[]
 }
 
-/* =========================
-   메인 컴포넌트
-========================= */
+type StrategyData = {
+  company_name?: string
+  actions?: any
+  updated_at?: string
+  strategy_type?: string
+  trigger_type?: string
+  confidence_score?: number
+  momentum_score?: number
+  risk_7d?: number
+  risk_30d?: number
+  opp_7d?: number
+  opp_30d?: number
+}
 
-export default function CompanyDetail() {
-  const params = useParams();
-  const companyParam = params.company as string;
-  const company = decodeURIComponent(companyParam);
+type CompanyDetailResponse = {
+  dashboard: DashboardData | null
+  events: EventItem[]
+  strategy: StrategyData | null
+}
 
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [strategy, setStrategy] = useState<RawStrategy | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+function formatScore(value: number | null | undefined, digits = 1) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "-"
+  return value.toFixed(digits)
+}
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch(
-          `/api/company/${encodeURIComponent(company)}`
-        );
+function formatDate(value?: string) {
+  if (!value) return "-"
+  try {
+    return new Date(value).toLocaleString("ko-KR")
+  } catch {
+    return value
+  }
+}
 
-        if (!res.ok) throw new Error("API failed");
+function levelColor(level?: string) {
+  switch (level) {
+    case "HIGH":
+      return "bg-red-100 text-red-700 border-red-200"
+    case "MED":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200"
+    case "LOW":
+      return "bg-green-100 text-green-700 border-green-200"
+    default:
+      return "bg-gray-100 text-gray-700 border-gray-200"
+  }
+}
 
-        const data: {
-          dashboard: Dashboard | null;
-          events: Event[];
-          strategy: RawStrategy | null;
-        } = await res.json();
+function impactColor(type?: string) {
+  return type === "risk"
+    ? "bg-red-50 text-red-700 border-red-200"
+    : "bg-blue-50 text-blue-700 border-blue-200"
+}
 
-        setDashboard(data.dashboard);
-        setEvents(data.events ?? []);
-        setStrategy(data.strategy);
-      } catch (error) {
-        console.error("Fetch error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+function deltaColor(value?: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "text-gray-500"
+  if (value > 0) return "text-red-600"
+  if (value < 0) return "text-blue-600"
+  return "text-gray-500"
+}
 
-    fetchData();
-  }, [company]);
+function normalizeStrategyActions(strategy: StrategyData | null): StrategyAction[] {
+  if (!strategy) return []
 
-  /* =========================
-     전략 안전 파싱
-  ========================= */
+  const raw = strategy.actions
 
-  const strategyList: string[] = useMemo(() => {
-    if (!strategy || !strategy.actions) return [];
-
-    const value = strategy.actions;
-
-    if (Array.isArray(value)) {
-      return value.filter((v): v is string => typeof v === "string");
-    }
-
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      "actions" in value
-    ) {
-      const obj = value as { actions?: unknown };
-      if (Array.isArray(obj.actions)) {
-        return obj.actions.filter(
-          (v): v is string => typeof v === "string"
-        );
-      }
-    }
-
-    if (typeof value === "string") {
-      try {
-        const parsed: unknown = JSON.parse(value);
-
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (v): v is string => typeof v === "string"
-          );
-        }
-
-        if (
-          typeof parsed === "object" &&
-          parsed !== null &&
-          "actions" in parsed
-        ) {
-          const obj = parsed as { actions?: unknown };
-          if (Array.isArray(obj.actions)) {
-            return obj.actions.filter(
-              (v): v is string => typeof v === "string"
-            );
-          }
-        }
-      } catch (error) {
-        console.error("Strategy parse error:", error);
-      }
-    }
-
-    return [];
-  }, [strategy]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        데이터 불러오는 중...
-      </div>
-    );
+  if (Array.isArray(raw)) {
+    return raw
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50 p-10">
-      {/* 헤더 */}
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold tracking-tight">
-          🏢 {company}
-        </h1>
-        <p className="text-gray-500 mt-2">
-          기업 리스크 및 전략 분석 리포트
-        </p>
-      </div>
+  if (raw && Array.isArray(raw.actions)) {
+    return raw.actions
+  }
 
-      {/* 점수 카드 */}
-      <div className="grid grid-cols-4 gap-6 mb-14">
-        <ScoreCard
-          label="Risk Score"
-          value={dashboard?.risk_score}
-          delta={dashboard?.risk_delta}
-          color="red"
-        />
-        <ScoreCard
-          label="Opportunity Score"
-          value={dashboard?.opportunity_score}
-          delta={dashboard?.opportunity_delta}
-          color="blue"
-        />
-        <ScoreCard
-          label="Risk Δ"
-          value={dashboard?.risk_delta}
-          color="orange"
-        />
-        <ScoreCard
-          label="Opp Δ"
-          value={dashboard?.opportunity_delta}
-          color="green"
-        />
-      </div>
-
-      {/* 이벤트 */}
-      <Section title="📡 최근 이벤트">
-        {events.length === 0 && (
-          <EmptyState message="최근 이벤트가 없습니다." />
-        )}
-
-        {events.map((event: Event, index: number) => (
-          <div
-            key={index}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-4"
-          >
-            <div className="font-semibold text-lg">
-              {event.event_type}
-            </div>
-
-            <div className="text-sm text-gray-500 mt-2">
-              {event.impact_type} · Strength{" "}
-              <span className="font-medium">
-                {event.impact_strength}
-              </span>
-            </div>
-
-            <div className="text-xs text-gray-400 mt-2">
-              {new Date(event.created_at).toLocaleDateString()}
-            </div>
-          </div>
-        ))}
-      </Section>
-
-      {/* 전략 */}
-      <Section title="🧠 실행 전략">
-        {strategyList.length === 0 && (
-          <EmptyState message="생성된 전략이 없습니다." />
-        )}
-
-        {strategyList.map((action: string, index: number) => (
-          <div
-            key={index}
-            className="bg-blue-50 border border-blue-200 p-5 rounded-2xl mb-4 text-blue-900 leading-relaxed"
-          >
-            {action}
-          </div>
-        ))}
-
-        {strategy && (
-          <div className="text-xs text-gray-500 mt-4">
-            전략 생성일:{" "}
-            {new Date(strategy.updated_at).toLocaleString()}
-          </div>
-        )}
-      </Section>
-    </main>
-  );
+  return []
 }
 
-/* =========================
-   UI 컴포넌트
-========================= */
-
-function ScoreCard({
-  label,
-  value,
-  delta,
-  color
+export default function CompanyDetailPage({
+  params,
 }: {
-  label: string;
-  value?: number;
-  delta?: number;
-  color: string;
+  params: Promise<{ company: string }>
 }) {
-  const colorMap: Record<string, string> = {
-    red: "text-red-600",
-    blue: "text-blue-600",
-    green: "text-green-600",
-    orange: "text-orange-600"
-  };
+  const [companyName, setCompanyName] = useState("")
+  const [data, setData] = useState<CompanyDetailResponse | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  return (
-    <div className="bg-white rounded-2xl shadow-sm p-6 text-center border border-gray-100">
-      <div className="text-sm text-gray-500">{label}</div>
+  useEffect(() => {
+    let mounted = true
 
-      <div
-        className={`text-3xl font-bold mt-3 ${
-          colorMap[color] ?? "text-gray-800"
-        }`}
-      >
-        {value !== undefined ? Math.round(value) : "-"}
-      </div>
+    const init = async () => {
+      try {
+        const resolved = await params
+        if (!mounted) return
 
-      {delta !== undefined && (
-        <div className="text-xs text-gray-400 mt-2">
-          Δ {delta.toFixed(2)}
+        const decodedCompany = decodeURIComponent(resolved.company)
+        setCompanyName(decodedCompany)
+
+        const res = await fetch(`/api/company/${encodeURIComponent(decodedCompany)}`)
+        const json = await res.json()
+
+        if (!mounted) return
+        setData(json)
+      } catch (e) {
+        console.error("Failed to fetch company detail:", e)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    init()
+
+    return () => {
+      mounted = false
+    }
+  }, [params])
+
+  const strategyActions = useMemo(() => normalizeStrategyActions(data?.strategy ?? null), [data])
+
+  if (loading) {
+    return <main className="p-6">불러오는 중...</main>
+  }
+
+  if (!data || !data.dashboard) {
+    return (
+      <main className="p-6 space-y-3">
+        <h1 className="text-2xl font-bold">{companyName || "회사 상세"}</h1>
+        <div className="rounded-xl border p-6 text-gray-500">
+          회사 데이터를 찾을 수 없습니다.
         </div>
-      )}
-    </div>
-  );
-}
+      </main>
+    )
+  }
 
-function Section({
-  title,
-  children
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-14">
-      <h2 className="text-xl font-semibold mb-6 tracking-tight">
-        {title}
-      </h2>
-      {children}
-    </div>
-  );
-}
+  const dashboard = data.dashboard
+  const events = data.events ?? []
+  const strategy = data.strategy
 
-function EmptyState({
-  message
-}: {
-  message: string;
-}) {
   return (
-    <div className="bg-white p-6 rounded-2xl text-gray-400 text-center border border-gray-100">
-      {message}
-    </div>
-  );
+    <main className="p-6 space-y-6">
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold">{dashboard.company_name}</h1>
+            <p className="text-sm text-gray-500 mt-1">기업 리스크 및 전략 분석 리포트</p>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-medium ${levelColor(
+                dashboard.risk_level
+              )}`}
+            >
+              Risk {dashboard.risk_level}
+            </span>
+            <span
+              className={`rounded-full border px-3 py-1 text-sm font-medium ${levelColor(
+                dashboard.opportunity_level
+              )}`}
+            >
+              Opp {dashboard.opportunity_level}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="text-sm text-gray-500">Risk Score</div>
+          <div className="mt-2 text-3xl font-bold">{formatScore(dashboard.risk_score, 0)}</div>
+          <div className={`mt-2 text-sm ${deltaColor(dashboard.risk_delta)}`}>
+            Δ {formatScore(dashboard.risk_delta, 2)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="text-sm text-gray-500">Opportunity Score</div>
+          <div className="mt-2 text-3xl font-bold">
+            {formatScore(dashboard.opportunity_score, 0)}
+          </div>
+          <div className={`mt-2 text-sm ${deltaColor(dashboard.opportunity_delta)}`}>
+            Δ {formatScore(dashboard.opportunity_delta, 2)}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="text-sm text-gray-500">Risk Δ</div>
+          <div className={`mt-2 text-3xl font-bold ${deltaColor(dashboard.risk_delta)}`}>
+            {formatScore(dashboard.risk_delta, 0)}
+          </div>
+          <div className="mt-2 text-sm text-gray-500">최근 구간 변화량</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="text-sm text-gray-500">Momentum</div>
+          <div className="mt-2 text-3xl font-bold">
+            {formatScore(dashboard.momentum_score, 1)}
+          </div>
+          <div className="mt-2 text-sm text-gray-500">
+            updated: {formatDate(dashboard.updated_at)}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-2xl font-bold">최근 이벤트</h2>
+          <div className="text-sm text-gray-500">{events.length}건</div>
+        </div>
+
+        {events.length === 0 ? (
+          <div className="text-gray-500">최근 이벤트가 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {events.map((event, idx) => (
+              <div
+                key={`${event.article_id ?? "event"}-${idx}`}
+                className="rounded-xl border p-4"
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-lg font-semibold">{event.event_type}</div>
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      <span
+                        className={`rounded-full border px-2 py-1 text-xs font-medium ${impactColor(
+                          event.impact_type
+                        )}`}
+                      >
+                        {event.impact_type}
+                      </span>
+                      {event.signal_category && (
+                        <span className="rounded-full border px-2 py-1 text-xs text-gray-700">
+                          {event.signal_category}
+                        </span>
+                      )}
+                      {event.industry_tag && (
+                        <span className="rounded-full border px-2 py-1 text-xs text-gray-700">
+                          {event.industry_tag}
+                        </span>
+                      )}
+                      {event.trend_bucket && (
+                        <span className="rounded-full border px-2 py-1 text-xs text-gray-700">
+                          {event.trend_bucket}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-gray-500">{formatDate(event.created_at)}</div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Impact Strength</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {formatScore(event.impact_strength, 0)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Severity</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {formatScore(event.severity_level, 0)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Confidence</div>
+                    <div className="mt-1 text-lg font-semibold">
+                      {formatScore(event.confidence, 2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-2xl font-bold">실행 전략</h2>
+          <div className="text-sm text-gray-500">
+            생성일: {strategy?.updated_at ? formatDate(strategy.updated_at) : "-"}
+          </div>
+        </div>
+
+        {strategyActions.length === 0 ? (
+          <div className="text-gray-500">생성된 전략이 없습니다.</div>
+        ) : (
+          <div className="space-y-4">
+            {strategyActions.map((action, idx) => (
+              <div key={idx} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {idx + 1}. {action.title || "전략"}
+                    </div>
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      {action.owner && (
+                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                          {action.owner}
+                        </span>
+                      )}
+                      {action.timeline && (
+                        <span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                          {action.timeline}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-sm text-gray-700">
+                  {action.expected_impact || "-"}
+                </div>
+
+                {action.evidence && action.evidence.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-xs text-gray-500 mb-2">Evidence</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {action.evidence.map((ev, evIdx) => (
+                        <span
+                          key={evIdx}
+                          className="rounded-full border px-2 py-1 text-xs text-gray-700"
+                        >
+                          {ev}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {strategy && (
+              <div className="grid gap-3 md:grid-cols-3 pt-2">
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">Confidence Score</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatScore(strategy.confidence_score, 2)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">Risk 7D / 30D</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatScore(strategy.risk_7d, 1)} / {formatScore(strategy.risk_30d, 1)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">Opp 7D / 30D</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {formatScore(strategy.opp_7d, 1)} / {formatScore(strategy.opp_30d, 1)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </main>
+  )
 }

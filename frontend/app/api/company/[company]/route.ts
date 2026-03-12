@@ -1,47 +1,179 @@
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server"
+import { supabase } from "@/lib/supabase"
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type RouteContext = {
+  params: Promise<{
+    company: string
+  }>
+}
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ company: string }> }
-) {
+function normalizeCompanyName(name: string) {
+  return decodeURIComponent(name)
+    .replace(/\(주\)|㈜|주식회사/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+async function fetchDashboard(companyName: string) {
+  const exact = await supabase
+    .from("company_scores")
+    .select(`
+      company_name,
+      risk_score,
+      opportunity_score,
+      risk_level,
+      opportunity_level,
+      risk_delta,
+      opportunity_delta,
+      momentum_score,
+      updated_at
+    `)
+    .eq("company_name", companyName)
+    .maybeSingle()
+
+  if (exact.data || exact.error) return exact
+
+  return await supabase
+    .from("company_scores")
+    .select(`
+      company_name,
+      risk_score,
+      opportunity_score,
+      risk_level,
+      opportunity_level,
+      risk_delta,
+      opportunity_delta,
+      momentum_score,
+      updated_at
+    `)
+    .ilike("company_name", companyName)
+    .maybeSingle()
+}
+
+async function fetchEvents(companyName: string) {
+  const exact = await supabase
+    .from("signals")
+    .select(`
+      article_id,
+      company_name,
+      event_type,
+      impact_type,
+      impact_strength,
+      severity_level,
+      confidence,
+      signal_category,
+      industry_tag,
+      trend_bucket,
+      created_at
+    `)
+    .eq("company_name", companyName)
+    .order("created_at", { ascending: false })
+    .limit(20)
+
+  if ((exact.data?.length ?? 0) > 0 || exact.error) return exact
+
+  return await supabase
+    .from("signals")
+    .select(`
+      article_id,
+      company_name,
+      event_type,
+      impact_type,
+      impact_strength,
+      severity_level,
+      confidence,
+      signal_category,
+      industry_tag,
+      trend_bucket,
+      created_at
+    `)
+    .ilike("company_name", companyName)
+    .order("created_at", { ascending: false })
+    .limit(20)
+}
+
+async function fetchStrategy(companyName: string) {
+  const exact = await supabase
+    .from("action_recommendations")
+    .select(`
+      company_name,
+      actions,
+      updated_at,
+      strategy_type,
+      trigger_type,
+      confidence_score,
+      momentum_score,
+      risk_7d,
+      risk_30d,
+      opp_7d,
+      opp_30d
+    `)
+    .eq("company_name", companyName)
+    .maybeSingle()
+
+  if (exact.data || exact.error) return exact
+
+  return await supabase
+    .from("action_recommendations")
+    .select(`
+      company_name,
+      actions,
+      updated_at,
+      strategy_type,
+      trigger_type,
+      confidence_score,
+      momentum_score,
+      risk_7d,
+      risk_30d,
+      opp_7d,
+      opp_30d
+    `)
+    .ilike("company_name", companyName)
+    .maybeSingle()
+}
+
+export async function GET(_req: NextRequest, context: RouteContext) {
   try {
-    console.log("==== API START ====");
+    const { company } = await context.params
+    const companyName = normalizeCompanyName(company)
 
-    // 🔥 중요: await params
-    const resolvedParams = await params;
+    const { data: dashboard, error: dashboardError } = await fetchDashboard(companyName)
+    if (dashboardError) {
+      console.error("[/api/company] dashboard error:", dashboardError)
+      return NextResponse.json(
+        { error: "Failed to fetch company dashboard" },
+        { status: 500 }
+      )
+    }
 
-    console.log("Resolved params:", resolvedParams);
+    const { data: events, error: eventsError } = await fetchEvents(companyName)
+    if (eventsError) {
+      console.error("[/api/company] events error:", eventsError)
+      return NextResponse.json(
+        { error: "Failed to fetch company events" },
+        { status: 500 }
+      )
+    }
 
-    const rawCompany = resolvedParams.company;
+    const { data: strategy, error: strategyError } = await fetchStrategy(companyName)
+    if (strategyError) {
+      console.error("[/api/company] strategy error:", strategyError)
+      return NextResponse.json(
+        { error: "Failed to fetch company strategy" },
+        { status: 500 }
+      )
+    }
 
-    console.log("Raw param:", rawCompany);
-
-    const company = decodeURIComponent(rawCompany).trim();
-
-    console.log("Decoded:", company);
-
-    // 최신 전략 조회
-    const { data: strategy } = await supabase
-      .from("action_recommendations")
-      .select("*")
-      .eq("company_name", company)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    console.log("Strategy:", strategy);
-    console.log("==== API END ====");
-
-    return Response.json({
-      strategy
-    });
-  } catch (err) {
-    console.error("🔥 API ERROR:", err);
-    return Response.json({ error: "Server Error" }, { status: 500 });
+    return NextResponse.json({
+      dashboard: dashboard ?? null,
+      events: events ?? [],
+      strategy: strategy ?? null,
+    })
+  } catch (e) {
+    console.error("[/api/company] unexpected error:", e)
+    return NextResponse.json(
+      { error: "Unexpected server error" },
+      { status: 500 }
+    )
   }
 }

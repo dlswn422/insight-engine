@@ -2,12 +2,22 @@
 
 import { useEffect, useRef } from "react";
 import Chart from "chart.js/auto";
-import {
-  opportunitySourceData,
-  opportunityRevenueData,
-} from "../mockData/opportunityData";
 
-export default function OpportunityChartsRow() {
+type Props = {
+  sourceData: {
+    labels: string[];
+    values: number[];
+  };
+  revenueData: {
+    labels: string[];
+    values: number[];
+  };
+};
+
+export default function OpportunityChartsRow({
+  sourceData,
+  revenueData,
+}: Props) {
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const revenueCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -17,17 +27,17 @@ export default function OpportunityChartsRow() {
     const sourceChart = new Chart(sourceCanvasRef.current, {
       type: "pie",
       data: {
-        labels: opportunitySourceData.labels,
+        labels: sourceData.labels,
         datasets: [
           {
-            data: opportunitySourceData.values,
+            data: sourceData.values,
             backgroundColor: [
-              "rgba(99,102,241,0.7)",
-              "rgba(34,197,94,0.7)",
-              "rgba(59,130,246,0.7)",
-              "rgba(245,158,11,0.7)",
-              "rgba(168,85,247,0.7)",
-              "rgba(239,68,68,0.7)",
+              "rgba(34, 211, 238, 0.75)",
+              "rgba(59, 130, 246, 0.75)",
+              "rgba(16, 185, 129, 0.75)",
+              "rgba(245, 158, 11, 0.75)",
+              "rgba(244, 63, 94, 0.75)",
+              "rgba(139, 92, 246, 0.75)",
             ],
             borderWidth: 0,
           },
@@ -37,25 +47,21 @@ export default function OpportunityChartsRow() {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        layout: {
+          padding: 8,
+        },
         plugins: {
           legend: {
             position: "right",
             labels: {
-              color: "#8892a4",
-              padding: 10,
+              color: "#94a3b8",
+              padding: 14,
               boxWidth: 10,
               font: {
                 size: 11,
                 family: "'Noto Sans KR', sans-serif",
               },
             },
-          },
-          tooltip: {
-            backgroundColor: "#111827",
-            titleColor: "#ffffff",
-            bodyColor: "#e5e7eb",
-            borderColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
           },
         },
       },
@@ -64,21 +70,20 @@ export default function OpportunityChartsRow() {
     const revenueChart = new Chart(revenueCanvasRef.current, {
       type: "bar",
       data: {
-        labels: opportunityRevenueData.labels,
+        labels: revenueData.labels,
         datasets: [
           {
-            label: "예상 연간 매출 (억원)",
-            data: opportunityRevenueData.values,
+            data: revenueData.values,
             backgroundColor: [
-              "rgba(99,102,241,0.7)",
-              "rgba(34,197,94,0.7)",
-              "rgba(245,158,11,0.7)",
-              "rgba(239,68,68,0.7)",
-              "rgba(59,130,246,0.7)",
+              "rgba(14, 165, 233, 0.75)",
+              "rgba(16, 185, 129, 0.75)",
+              "rgba(245, 158, 11, 0.75)",
+              "rgba(239, 68, 68, 0.75)",
+              "rgba(99, 102, 241, 0.75)",
             ],
-            borderColor: ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#3b82f6"],
-            borderWidth: 1,
-            borderRadius: 6,
+            borderWidth: 0,
+            borderRadius: 8,
+            maxBarThickness: 56,
           },
         ],
       },
@@ -87,41 +92,19 @@ export default function OpportunityChartsRow() {
         maintainAspectRatio: false,
         animation: false,
         plugins: {
-          legend: {
-            display: false,
-          },
-          tooltip: {
-            backgroundColor: "#111827",
-            titleColor: "#ffffff",
-            bodyColor: "#e5e7eb",
-            borderColor: "rgba(255,255,255,0.08)",
-            borderWidth: 1,
-          },
+          legend: { display: false },
         },
         scales: {
           x: {
-            grid: {
-              color: "rgba(255,255,255,0.06)",
-            },
-            ticks: {
-              color: "#8892a4",
-              font: {
-                size: 11,
-                family: "'Noto Sans KR', sans-serif",
-              },
-            },
+            grid: { color: "rgba(255,255,255,0.06)" },
+            ticks: { color: "#94a3b8" },
           },
           y: {
-            grid: {
-              color: "rgba(255,255,255,0.06)",
-            },
+            beginAtZero: true,
+            grid: { color: "rgba(255,255,255,0.06)" },
             ticks: {
-              color: "#8892a4",
+              color: "#94a3b8",
               callback: (value) => `${value}억`,
-              font: {
-                size: 11,
-                family: "'Noto Sans KR', sans-serif",
-              },
             },
           },
         },
@@ -132,28 +115,28 @@ export default function OpportunityChartsRow() {
       sourceChart.destroy();
       revenueChart.destroy();
     };
-  }, []);
+  }, [sourceData, revenueData]);
 
   return (
-    <div className="charts-row" style={{ marginTop: "24px" }}>
-      <div className="chart-card flex-1">
+    <div className="opportunity-charts-row">
+      <div className="chart-card opportunity-chart-card">
         <div className="chart-header">
           <h3>
             <i className="fas fa-database"></i> 기회 발굴 소스
           </h3>
         </div>
-        <div style={{ height: "240px" }}>
+        <div className="opportunity-chart-canvas-wrap">
           <canvas ref={sourceCanvasRef}></canvas>
         </div>
       </div>
 
-      <div className="chart-card flex-2">
+      <div className="chart-card opportunity-chart-card">
         <div className="chart-header">
           <h3>
-            <i className="fas fa-chart-bar"></i> 기회 유형별 예상 매출
+            <i className="fas fa-chart-bar"></i> 유형별 예상 매출
           </h3>
         </div>
-        <div style={{ height: "240px" }}>
+        <div className="opportunity-chart-canvas-wrap">
           <canvas ref={revenueCanvasRef}></canvas>
         </div>
       </div>

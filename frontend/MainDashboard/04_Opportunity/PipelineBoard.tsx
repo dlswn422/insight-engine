@@ -1,37 +1,44 @@
-import { opportunityList } from "../mockData/opportunityData";
+import type { OpportunityItem } from "./OpportunitySection";
 
-const colOrder = ["urgent", "high", "medium"] as const;
+const COL_ORDER = ["urgent", "high", "medium"] as const;
 
-const colInfo = {
-  urgent: { className: "urgent", label: "긴급" },
-  high: { className: "high", label: "높음" },
-  medium: { className: "medium", label: "보통" },
+const COL_INFO = {
+  urgent: { label: "긴급", className: "urgent" },
+  high: { label: "높음", className: "high" },
+  medium: { label: "보통", className: "medium" },
 };
 
-export default function PipelineBoard() {
-  const cols = {
-    urgent: opportunityList.filter((item) => item.priority === "urgent"),
-    high: opportunityList.filter((item) => item.priority === "high"),
-    medium: opportunityList.filter((item) => item.priority === "medium"),
+type Props = {
+  items: OpportunityItem[];
+};
+
+export default function PipelineBoard({ items }: Props) {
+  const grouped = {
+    urgent: items.filter((item) => item.priority === "urgent"),
+    high: items.filter((item) => item.priority === "high"),
+    medium: items.filter((item) => item.priority === "medium"),
   };
 
   return (
-    <>
-      <div className="pipeline-header">
-        <div className="pipeline-stage-headers">
-          <div className="ps-header ps-urgent">🔴 긴급 ({cols.urgent.length})</div>
-          <div className="ps-header ps-high">🟡 높음 ({cols.high.length})</div>
-          <div className="ps-header ps-medium">🔵 보통 ({cols.medium.length})</div>
-        </div>
+    <div className="opportunity-board-wrap">
+      <div className="pipeline-stage-headers">
+        {COL_ORDER.map((priority) => (
+          <div
+            key={priority}
+            className={`ps-header ps-${COL_INFO[priority].className}`}
+          >
+            {COL_INFO[priority].label} ({grouped[priority].length})
+          </div>
+        ))}
       </div>
 
-      <div className="pipeline-board" id="pipelineBoard">
-        {colOrder.map((priority) => (
+      <div className="pipeline-board">
+        {COL_ORDER.map((priority) => (
           <div key={priority} className="pipeline-col">
-            {cols[priority].map((item) => (
+            {grouped[priority].map((item) => (
               <div
                 key={item.id}
-                className={`opp-card ${colInfo[priority].className}`}
+                className={`opp-card opp-card-${COL_INFO[priority].className}`}
               >
                 <div className="opp-card-header">
                   <div className="opp-company">{item.company}</div>
@@ -39,7 +46,9 @@ export default function PipelineBoard() {
                 </div>
 
                 <div className="opp-trigger">
-                  <i className="fas fa-bolt"></i> {item.trigger}
+                  <span className="opp-trigger-chip">
+                    <i className="fas fa-bolt"></i> {item.trigger}
+                  </span>
                 </div>
 
                 <div className="opp-desc">{item.desc}</div>
@@ -59,6 +68,6 @@ export default function PipelineBoard() {
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }
