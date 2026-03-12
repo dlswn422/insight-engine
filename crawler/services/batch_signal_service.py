@@ -49,7 +49,7 @@ ROLE_CLIENT = "CLIENT"
 ROLE_POTENTIAL = "POTENTIAL"
 ROLE_GENERAL = "GENERAL"
 
-# ✅ 2-hit 룰 캐시(동일 회사 반복 조회 최소화)
+# ✅ 2-hit 룰 캐시(동일 회사 반복 조회 최소화) - (현재 파일에서는 사용 안 함 / 호환용 유지)
 _2hit_cache: dict[str, bool] = {}
 
 
@@ -105,15 +105,37 @@ def should_register_general(sig: dict) -> bool:
 should_promote_to_potential = should_register_general
 
 
-def get_company_role(company_name: str) -> str:
+# ==========================================================
+# ✅ [변경] managed_clients 우선 조회를 위한 헬퍼 추가
+# ==========================================================
+def _get_role_from_managed_clients(company_name: str) -> str | None:
     """
-    companies 테이블에서 해당 기업의 현재 등급(company_role)을 조회합니다.
-    등록되어 있지 않거나 등급이 없는 경우 'GENERAL'을 반환합니다.
-    뉴스 시그널 저장 시 기업 롤을 확인하는 용도로 사용합니다.
+    managed_clients에 있으면 'CLIENT'로 판정.
+    (managed_clients가 고객사 테이블이므로 role=CLIENT 고정)
     """
     company_name = (company_name or "").strip()
     if not company_name:
-        return "GENERAL"
+        return None
+
+    row = (
+        supabase.table("managed_clients")
+        .select("id")
+        .eq("company_name", company_name)
+        .limit(1)
+        .execute()
+    ).data or []
+
+    return ROLE_CLIENT if row else None
+
+
+def _get_role_from_companies(company_name: str) -> str | None:
+    """
+    companies 테이블의 company_role 조회.
+    없으면 None 반환.
+    """
+    company_name = (company_name or "").strip()
+    if not company_name:
+        return None
 
     row = (
         supabase.table("companies")
@@ -123,8 +145,40 @@ def get_company_role(company_name: str) -> str:
         .execute()
     ).data or []
 
-    return (row[0].get("company_role") if row else None) or "GENERAL"
+    return (row[0].get("company_role") if row else None)
 
+
+# ==========================================================
+# ✅ [변경] get_company_role: managed_clients → companies 순서
+# ==========================================================
+def get_company_role(company_name: str) -> str:
+    """
+    signals.company_role을 채우기 위한 role 판정 로직
+
+    우선순위:
+      1) managed_clients에 있으면 → CLIENT
+      2) companies에 있으면 → companies.company_role (GENERAL/POTENTIAL 등)
+      3) 둘 다 없으면 → GENERAL
+
+    ※ 참고: companies는 GENERAL/POTENTIAL 중심으로 운영,
+            OWN/CLIENT는 managed_clients 같은 별도 테이블에서 관리한다는 팀 합의 반영.
+    """
+    company_name = (company_name or "").strip()
+    if not company_name:
+        return ROLE_GENERAL
+
+    # 1) managed_clients 우선
+    role = _get_role_from_managed_clients(company_name)
+    if role:
+        return role
+
+    # 2) companies fallback
+    role = _get_role_from_companies(company_name)
+    if role:
+        return role
+
+    # 3) default
+    return ROLE_GENERAL
 
 
 def upsert_general_company(company_name: str) -> None:
@@ -155,11 +209,11 @@ def upsert_general_company(company_name: str) -> None:
 
     # 신규 기업: GENERAL 등급으로 INSERT하고, DART 코드 매핑 대기 상태로 설정합니다.
     payload = {
-        "company_name":    company_name,
-        "company_role":    ROLE_GENERAL,
+        "company_name":     company_name,
+        "company_role":     ROLE_GENERAL,
         "dart_sync_status": "PENDING",  # sync_dart_codes.py가 DART 코드를 찾아줄 예정
-        "created_at":      now,
-        "updated_at":      now,
+        "created_at":       now,
+        "updated_at":       now,
     }
     try:
         supabase.table("companies").insert(payload).execute()
@@ -187,11 +241,11 @@ def upsert_signal(
     - event_hash가 같은 시그널이 이미 있으면 덮어쓰지 않습니다. (UPSERT)
     - 뉴스 시그널: article_id 채우고, rcept_no = NULL
     - DART 시그널: rcept_no 채우고, article_id = NULL, company_role은 source_role에서 전달
-    - company_role이 None이면 뉴스 출신으로 판단하여 DB에서 직접 조회합니다.
+    - company_role이 None이면 뉴스 출신으로 판단하여 role을 조회해 채웁니다.
     """
     event_hash = make_event_hash(sig)
 
-    # company_role이 전달되지 않은 경우(뉴스 출신): DB에서 현재 등급 조회
+    # company_role이 전달되지 않은 경우(뉴스 출신): managed_clients → companies 순서로 role 조회
     if company_role is None:
         company_role = get_company_role(sig.get("company_name", ""))
 
@@ -317,9 +371,7 @@ def analyze_batch(items: list[dict]) -> dict:
             upsert_signal(aid, sig, source="news")
             out["signals_saved"] += 1
 
-            # 2) GENERAL 등록: 1차 필터 (2-hit 룰 제거됨, 긍정이면 즉시 등록)
-            #    뉴스 출신 기업은 반드시 GENERAL로만 등록합니다.
-            #    POTENTIAL 승격은 sync_potential_companies.py가 담당합니다.
+            # 2) GENERAL 등록: 1차 필터 (긍정이면 즉시 등록)
             cname = sig.get("company_name", "")
             if should_register_general(sig):
                 upsert_general_company(cname)
