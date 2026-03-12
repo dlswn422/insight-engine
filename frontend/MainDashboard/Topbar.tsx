@@ -1,3 +1,11 @@
+import type { SectionType } from "./types";
+
+type Props = {
+  activeSection: SectionType;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+};
+
 function formatKoreanDate(date: Date) {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -5,24 +13,45 @@ function formatKoreanDate(date: Date) {
   return `${year}년 ${month}월 ${day}일`;
 }
 
-export default function Topbar() {
+const sectionTitleMap: Record<SectionType, string> = {
+  overview: "종합 상황판",
+  reputation: "Reputation Monitor",
+  customer: "Customer Health",
+  opportunity: "Opportunity Pipeline",
+};
 
+export default function Topbar({
+  activeSection,
+  sidebarOpen,
+  setSidebarOpen,
+}: Props) {
   const todayText = formatKoreanDate(new Date());
 
   return (
-    <div className="topbar">
-      <button className="sidebar-toggle">
-        <i className="fas fa-bars"></i>
-      </button>
+    <header className="topbar">
+      <div className="topbar-left">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label="사이드바 토글"
+        >
+          <i className="fas fa-bars"></i>
+        </button>
 
-      <div className="topbar-title" id="topbarTitle">
-        종합 상황판
+        <div className="topbar-breadcrumb">
+          <span className="topbar-breadcrumb-root">신일팜글래스</span>
+          <span className="topbar-breadcrumb-divider">/</span>
+          <span className="topbar-breadcrumb-current">
+            {sectionTitleMap[activeSection]}
+          </span>
+        </div>
       </div>
 
       <div className="topbar-right">
         <div className="status-indicator">
           <span className="status-dot pulse"></span>
-          <span>실시간 모니터링 중</span>
+          <span>실시간 모니터링</span>
         </div>
 
         <div className="date-badge">
@@ -30,6 +59,6 @@ export default function Topbar() {
           <span>{todayText}</span>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

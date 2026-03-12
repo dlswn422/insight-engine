@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 
 type ReputationResponse = {
@@ -59,6 +59,24 @@ type ScoreCardProps = {
   delta: string;
 };
 
+type KeywordFilterType = "positive" | "negative" | "all";
+type KeywordToneType = "positive" | "negative" | "neutral" | "violet";
+
+function getReputationDelta(
+  score: number,
+  kind: "media" | "finance" | "internal" | "total"
+) {
+  if (kind === "finance") {
+    if (score >= 80) return "매우 안정";
+    if (score >= 60) return "보통";
+    return "주의 필요";
+  }
+
+  if (score >= 80) return "상승세";
+  if (score >= 60) return "안정";
+  return "개선 필요";
+}
+
 function ScoreCard({ title, score, accent, delta }: ScoreCardProps) {
   return (
     <div className={`reputation-score-card accent-${accent}`}>
@@ -91,9 +109,19 @@ function ScoreCard({ title, score, accent, delta }: ScoreCardProps) {
   );
 }
 
+function getKeywordTone(idx: number): KeywordToneType {
+  if (idx % 5 === 0) return "positive";
+  if (idx % 5 === 1) return "negative";
+  if (idx % 5 === 2) return "violet";
+  if (idx % 5 === 3) return "positive";
+  return "neutral";
+}
+
 export default function ReputationSection() {
   const [data, setData] = useState<ReputationResponse>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
+  const [keywordFilter, setKeywordFilter] =
+    useState<KeywordFilterType>("all");
 
   const trendCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const categoryCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -103,6 +131,13 @@ export default function ReputationSection() {
       try {
         const res = await fetch("/api/reputation");
         const json = await res.json();
+
+        if (!res.ok) {
+          console.error("Reputation API error:", json);
+          setData(EMPTY_DATA);
+          return;
+        }
+
         setData({
           scoreCards: json?.scoreCards ?? EMPTY_DATA.scoreCards,
           sentimentTrend: json?.sentimentTrend ?? EMPTY_DATA.sentimentTrend,
@@ -234,6 +269,24 @@ export default function ReputationSection() {
     };
   }, [data, loading]);
 
+  const keywordItems = useMemo(() => {
+    return data.keywordCloud.map((item, idx) => {
+      const tone = getKeywordTone(idx);
+      return { ...item, tone };
+    });
+  }, [data.keywordCloud]);
+
+  const filteredKeywordItems = useMemo(() => {
+    if (keywordFilter === "all") return keywordItems;
+    if (keywordFilter === "positive") {
+      return keywordItems.filter((item) => item.tone === "positive");
+    }
+    if (keywordFilter === "negative") {
+      return keywordItems.filter((item) => item.tone === "negative");
+    }
+    return keywordItems;
+  }, [keywordFilter, keywordItems]);
+
   return (
     <section className="section active" id="section-reputation">
       <div className="section-header">
@@ -254,25 +307,34 @@ export default function ReputationSection() {
               title="미디어 평판"
               score={data.scoreCards.mediaScore}
               accent="green"
-              delta={`+4.1`}
+              delta={getReputationDelta(data.scoreCards.mediaScore, "media")}
             />
             <ScoreCard
               title="재무 건전성"
               score={data.scoreCards.financeScore}
               accent="yellow"
-              delta={`보통`}
+              delta={getReputationDelta(
+                data.scoreCards.financeScore,
+                "finance"
+              )}
             />
             <ScoreCard
               title="내부 평판"
               score={data.scoreCards.internalScore}
               accent="violet"
-              delta={`+2.3`}
+              delta={getReputationDelta(
+                data.scoreCards.internalScore,
+                "internal"
+              )}
             />
             <ScoreCard
               title="종합 평판 지수"
               score={data.scoreCards.totalReputation}
               accent="purple"
-              delta={`+3.2`}
+              delta={getReputationDelta(
+                data.scoreCards.totalReputation,
+                "total"
+              )}
             />
           </div>
 
@@ -307,35 +369,53 @@ export default function ReputationSection() {
                   <i className="fas fa-cloud"></i> 키워드 워드클라우드
                 </h3>
               </div>
+
               <div className="reputation-keyword-toolbar">
-                <button type="button" className="keyword-filter active">긍정</button>
-                <button type="button" className="keyword-filter">부정</button>
-                <button type="button" className="keyword-filter">전체</button>
+                <button
+                  type="button"
+                  className={`keyword-filter ${
+                    keywordFilter === "positive" ? "active" : ""
+                  }`}
+                  onClick={() => setKeywordFilter("positive")}
+                >
+                  긍정
+                </button>
+                <button
+                  type="button"
+                  className={`keyword-filter ${
+                    keywordFilter === "negative" ? "active" : ""
+                  }`}
+                  onClick={() => setKeywordFilter("negative")}
+                >
+                  부정
+                </button>
+                <button
+                  type="button"
+                  className={`keyword-filter ${
+                    keywordFilter === "all" ? "active" : ""
+                  }`}
+                  onClick={() => setKeywordFilter("all")}
+                >
+                  전체
+                </button>
               </div>
 
               <div className="reputation-keyword-wrap">
-                {data.keywordCloud.map((item, idx) => {
-                  const tone =
-                    idx % 5 === 0
-                      ? "positive"
-                      : idx % 5 === 1
-                      ? "negative"
-                      : idx % 5 === 2
-                      ? "violet"
-                      : idx % 5 === 3
-                      ? "positive"
-                      : "neutral";
-
-                  return (
+                {filteredKeywordItems.length === 0 ? (
+                  <div className="reputation-empty-text">
+                    표시할 키워드가 없습니다.
+                  </div>
+                ) : (
+                  filteredKeywordItems.map((item) => (
                     <span
                       key={item.text}
-                      className={`reputation-keyword-chip tone-${tone}`}
+                      className={`reputation-keyword-chip tone-${item.tone}`}
                       style={{ fontSize: `${item.weight}px` }}
                     >
                       {item.text}
                     </span>
-                  );
-                })}
+                  ))
+                )}
               </div>
             </div>
 
@@ -356,9 +436,17 @@ export default function ReputationSection() {
                     <div className="reputation-issue-left">
                       <div className="reputation-issue-rank">{idx + 1}</div>
                       <div className="reputation-issue-copy">
-                        <div className="reputation-issue-title">{issue.title}</div>
+                        <div className="reputation-issue-title">
+                          {issue.title}
+                        </div>
                         <div className="reputation-issue-sub">
-                          <span className={`issue-badge ${issue.tone === "negative" ? "negative" : "positive"}`}>
+                          <span
+                            className={`issue-badge ${
+                              issue.tone === "negative"
+                                ? "negative"
+                                : "positive"
+                            }`}
+                          >
                             {issue.tone === "negative" ? "부정" : "긍정"}
                           </span>
                           <span>{issue.category}</span>

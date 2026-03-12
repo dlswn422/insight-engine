@@ -55,8 +55,15 @@ export default function CustomerHealthSection() {
     const fetchHealth = async () => {
       try {
         const res = await fetch("/api/customer-health");
-        const json: ApiResponse = await res.json();
-        setItems(Array.isArray(json?.items) ? json.items : []);
+        const json: ApiResponse | { error?: string } = await res.json();
+
+        if (!res.ok) {
+          console.error("Customer Health API error:", json);
+          setItems([]);
+          return;
+        }
+
+        setItems(Array.isArray((json as ApiResponse)?.items) ? (json as ApiResponse).items : []);
       } catch (e) {
         console.error("Failed to fetch customer health:", e);
         setItems([]);

@@ -1,78 +1,110 @@
-type SectionType = "overview" | "reputation" | "customer" | "opportunity";
+import type { SectionType } from "./types";
 
-interface SidebarProps {
+interface Props {
   activeSection: SectionType;
   setActiveSection: (section: SectionType) => void;
+  sidebarOpen: boolean;
 }
+
+const navItems: {
+  key: SectionType;
+  icon: string;
+  title: string;
+  subtitle: string;
+  group: "analytics" | "management";
+}[] = [
+  {
+    key: "overview",
+    icon: "fa-table-cells-large",
+    title: "Overview",
+    subtitle: "종합 상황판",
+    group: "analytics",
+  },
+  {
+    key: "reputation",
+    icon: "fa-chart-column",
+    title: "Reputation",
+    subtitle: "평판 분석",
+    group: "analytics",
+  },
+  {
+    key: "customer",
+    icon: "fa-building-user",
+    title: "Customer Health",
+    subtitle: "고객 현황",
+    group: "management",
+  },
+  {
+    key: "opportunity",
+    icon: "fa-magnifying-glass-chart",
+    title: "Opportunities",
+    subtitle: "영업 기회",
+    group: "management",
+  },
+];
 
 export default function Sidebar({
   activeSection,
   setActiveSection,
-}: SidebarProps) {
+  sidebarOpen,
+}: Props) {
+  const analyticsItems = navItems.filter((item) => item.group === "analytics");
+  const managementItems = navItems.filter((item) => item.group === "management");
+
   return (
-    <div className="sidebar" id="sidebar">
-      <div className="sidebar-logo">
-        <div className="logo-icon">
+    <aside className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
+      <div className="sidebar-header">
+        <div className="logo-box">
           <i className="fas fa-flask"></i>
         </div>
 
-        <div className="logo-text">
-          <span className="logo-main">신일팜글래스</span>
-          <span className="logo-sub">B2B Intelligence</span>
+        <div className="brand-copy">
+          <strong>신일팜글래스</strong>
+          <span>B2B Intelligence</span>
         </div>
       </div>
 
-      <nav className="sidebar-nav">
-        <button
-          type="button"
-          className={`nav-item ${activeSection === "overview" ? "active" : ""}`}
-          onClick={() => setActiveSection("overview")}
-        >
-          <i className="fas fa-th-large"></i>
-          <span>Overview</span>
-          <small>종합 상황판</small>
-        </button>
+      <div className="sidebar-section-label">ANALYTICS</div>
+      <nav className="nav-list">
+        {analyticsItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`nav-item ${activeSection === item.key ? "active" : ""}`}
+            onClick={() => setActiveSection(item.key)}
+          >
+            <span className="nav-icon-box">
+              <i className={`fas ${item.icon}`}></i>
+            </span>
 
-        <button
-          type="button"
-          className={`nav-item ${activeSection === "reputation" ? "active" : ""}`}
-          onClick={() => setActiveSection("reputation")}
-        >
-          <i className="fas fa-chart-bar"></i>
-          <span>Reputation Monitor</span>
-          <small>평판 분석</small>
-        </button>
-
-        <button
-          type="button"
-          className={`nav-item ${activeSection === "customer" ? "active" : ""}`}
-          onClick={() => setActiveSection("customer")}
-        >
-          <i className="fas fa-users"></i>
-          <span>Customer Health</span>
-          <small>고객 현황</small>
-        </button>
-
-        <button
-          type="button"
-          className={`nav-item ${activeSection === "opportunity" ? "active" : ""}`}
-          onClick={() => setActiveSection("opportunity")}
-        >
-          <i className="fas fa-rocket"></i>
-          <span>Opportunity Pipeline</span>
-          <small>영업 기회</small>
-        </button>
+            <span className="nav-text">
+              <span className="nav-title">{item.title}</span>
+              <span className="nav-subtitle">{item.subtitle}</span>
+            </span>
+          </button>
+        ))}
       </nav>
 
-      <div className="sidebar-footer">
-        <div className="update-time">
-          <i className="fas fa-sync-alt"></i>
-          <span>최종 업데이트</span>
-          <strong id="lastUpdate"></strong>
-        </div>
+      <div className="sidebar-section-label">MANAGEMENT</div>
+      <nav className="nav-list">
+        {managementItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`nav-item ${activeSection === item.key ? "active" : ""}`}
+            onClick={() => setActiveSection(item.key)}
+          >
+            <span className="nav-icon-box">
+              <i className={`fas ${item.icon}`}></i>
+            </span>
 
-        <div className="version-badge">Ver 1.0</div>
-      </div>
-    </div>
+            <span className="nav-text">
+              <span className="nav-title">{item.title}</span>
+              <span className="nav-subtitle">{item.subtitle}</span>
+            </span>
+          </button>
+        ))}
+      </nav>
+    </aside>
   );
 }

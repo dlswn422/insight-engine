@@ -81,6 +81,70 @@ function formatAlertTime(value: string) {
   });
 }
 
+function getOverviewKpiSubtext(
+  key:
+    | "composite"
+    | "riskHigh"
+    | "riskMed"
+    | "oppHigh"
+    | "totalCompanies"
+    | "dart",
+  data: OverviewResponse
+) {
+  switch (key) {
+    case "composite":
+      return `위험 ${data.kpis.riskHighCount} · 기회 ${data.kpis.oppHighCount}`;
+    case "riskHigh":
+      return data.kpis.riskHighCount > 0
+        ? `즉시 대응 필요 ${data.kpis.riskHighCount}개사`
+        : "즉시 대응 대상 없음";
+    case "riskMed":
+      return data.kpis.riskMedCount > 0
+        ? `모니터링 대상 ${data.kpis.riskMedCount}개사`
+        : "모니터링 대상 없음";
+    case "oppHigh":
+      return data.kpis.oppHighCount > 0
+        ? `즉시 영업 후보 ${data.kpis.oppHighCount}건`
+        : "신규 기회 없음";
+    case "totalCompanies":
+      return `활성 관리 ${data.kpis.totalCompanies}개사`;
+    case "dart":
+      return data.kpis.dartCount > 0
+        ? `최근 공시 ${data.kpis.dartCount}건`
+        : "최근 공시 없음";
+    default:
+      return "-";
+  }
+}
+
+function getOverviewKpiChip(
+  key:
+    | "composite"
+    | "riskHigh"
+    | "riskMed"
+    | "oppHigh"
+    | "totalCompanies"
+    | "dart",
+  data: OverviewResponse
+) {
+  switch (key) {
+    case "composite":
+      return data.kpis.compositeIndex >= 75 ? "양호" : data.kpis.compositeIndex >= 55 ? "보통" : "주의";
+    case "riskHigh":
+      return data.kpis.riskHighCount > 0 ? "긴급" : "안정";
+    case "riskMed":
+      return data.kpis.riskMedCount > 0 ? "모니터링" : "안정";
+    case "oppHigh":
+      return data.kpis.oppHighCount > 0 ? "즉시 영업" : "대기";
+    case "totalCompanies":
+      return "고객군";
+    case "dart":
+      return data.kpis.dartCount > 0 ? "활성" : "없음";
+    default:
+      return "-";
+  }
+}
+
 function resolveActionType(
   title: string,
   subtitle: string
@@ -123,6 +187,12 @@ export default function OverviewSection({ setActiveSection }: Props) {
       try {
         const res = await fetch("/api/overview");
         const json = await res.json();
+
+        if (!res.ok) {
+          console.error("Overview API error:", json);
+          setData(EMPTY_DATA);
+          return;
+        }
 
         setData({
           kpis: json?.kpis ?? EMPTY_DATA.kpis,
@@ -276,56 +346,56 @@ export default function OverviewSection({ setActiveSection }: Props) {
 
   const kpiCards = [
     {
-      key: "composite",
+      key: "composite" as const,
       title: "종합 평판 지수",
       value: `${data.kpis.compositeIndex.toFixed(1)}`,
-      sub: `${formatDelta(3.2)} 전월 대비`,
-      chip: "양호",
+      sub: getOverviewKpiSubtext("composite", data),
+      chip: getOverviewKpiChip("composite", data),
       accent: "purple",
       icon: "fa-chart-simple",
     },
     {
-      key: "riskHigh",
+      key: "riskHigh" as const,
       title: "이탈 위험 고객",
       value: `${data.kpis.riskHighCount}개사`,
-      sub: `↑ ${Math.max(1, data.kpis.riskHighCount)} 전월 대비`,
-      chip: "긴급",
+      sub: getOverviewKpiSubtext("riskHigh", data),
+      chip: getOverviewKpiChip("riskHigh", data),
       accent: "red",
       icon: "fa-triangle-exclamation",
     },
     {
-      key: "riskMed",
+      key: "riskMed" as const,
       title: "주의 관찰 고객",
       value: `${data.kpis.riskMedCount}개사`,
-      sub: "유지",
-      chip: "모니터링",
+      sub: getOverviewKpiSubtext("riskMed", data),
+      chip: getOverviewKpiChip("riskMed", data),
       accent: "yellow",
       icon: "fa-eye",
     },
     {
-      key: "oppHigh",
+      key: "oppHigh" as const,
       title: "신규 기회 건수",
       value: `${data.kpis.oppHighCount}건`,
-      sub: `↑ ${Math.max(1, data.kpis.oppHighCount - 1)} 이번 주`,
-      chip: "즉시 영업",
+      sub: getOverviewKpiSubtext("oppHigh", data),
+      chip: getOverviewKpiChip("oppHigh", data),
       accent: "green",
       icon: "fa-bullseye",
     },
     {
-      key: "totalCompanies",
+      key: "totalCompanies" as const,
       title: "총 관리 고객사",
       value: `${data.kpis.totalCompanies}개사`,
-      sub: "+2 신규",
-      chip: "제약/화장품",
+      sub: getOverviewKpiSubtext("totalCompanies", data),
+      chip: getOverviewKpiChip("totalCompanies", data),
       accent: "blue",
       icon: "fa-folder-open",
     },
     {
-      key: "dart",
+      key: "dart" as const,
       title: "DART 모니터링",
       value: `${data.kpis.dartCount}건`,
-      sub: "자동 수집",
-      chip: "이번 주",
+      sub: getOverviewKpiSubtext("dart", data),
+      chip: getOverviewKpiChip("dart", data),
       accent: "violet",
       icon: "fa-file-circle-plus",
     },
