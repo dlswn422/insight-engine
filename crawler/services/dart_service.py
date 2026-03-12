@@ -168,7 +168,7 @@ def fetch_recent_disclosures(
     # 예) fetch_recent_disclosures(api_key, corp_code, bgn_de="20250101")
     # 예) timedelta(days=30) 으로 변경하면 30일치 수집
     if not bgn_de:
-        bgn_de = (datetime.today() - timedelta(days=180)).strftime("%Y%m%d")
+        bgn_de = (datetime.today() - timedelta(days=7)).strftime("%Y%m%d")
 
     end_de = datetime.today().strftime("%Y%m%d")
 
