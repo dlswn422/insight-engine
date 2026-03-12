@@ -91,17 +91,15 @@ def get_ready_disclosures(limit: int = FETCH_LIMIT) -> list[dict]:
     return result.data or []
 
 
-async def update_status(rcept_no: str, status: str, scout_result: dict | None = None) -> None:
+async def update_status(rcept_no: str, status: str) -> None:
     """
     공시의 처리 상태를 dart_disclosures 테이블에 업데이트합니다.
 
     status 값:
-        READY_FOR_ANALYSIS - LLM 분석 완료 (scout_result에 결과 저장)
+        READY_FOR_ANALYSIS - LLM 분석 완료
         ERROR              - 처리 중 예외 발생
     """
     payload: dict = {"scout_status": status}
-    if scout_result is not None:
-        payload["scout_result"] = json.dumps(scout_result, ensure_ascii=False)
 
     def _do_update():
         return supabase.table("dart_disclosures").update(payload).eq("rcept_no", rcept_no).execute()
@@ -379,14 +377,13 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
     for disclosure, err_msg in failed_list:
         rcept_no = disclosure.get("rcept_no", "")
         print(f"    ❌ 원문 추출 실패 → 오류 처리: [{disclosure.get('report_nm', '')}] 사유: {err_msg}")
-        await update_status(rcept_no, "ERROR", scout_result={"error": err_msg})
+        await update_status(rcept_no, "ERROR")
 
     if not llm_items:
         print("    ⚠️  분석 가능한 공시가 없습니다. (모두 원문 추출 실패)")
         return 0
 
     # ── 2단계: 성공한 공시를 LLM에 묶어서 1회 호출 ───────────────
-    print(f"    🧠 LLM 묶음 분석 시작: {len(llm_items)}건을 1회 API 호출로 처리")
     result_map = await bulk_llm_analyze(llm_items)
 
     # ── 3단계: LLM 결과를 각 공시에 매핑 → DB 저장 ─────────────
@@ -402,8 +399,7 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
 
         if not signals:
             print(f"    ⚠️  추출된 시그널 없음 (#{source_id}): [{report_nm}]")
-            await update_status(rcept_no, "READY_FOR_ANALYSIS",
-                                scout_result={"source": "bulk_llm", "signals_saved": 0})
+            await update_status(rcept_no, "READY_FOR_ANALYSIS")
             continue
 
         saved    = 0
@@ -429,11 +425,7 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
                     promoted += 1
 
         total_saved += saved
-        await update_status(rcept_no, "READY_FOR_ANALYSIS", scout_result={
-            "source":             "bulk_llm",
-            "signals_saved":      saved,
-            "potential_promoted": promoted,
-        })
+        await update_status(rcept_no, "READY_FOR_ANALYSIS")
         print(f"    ✅ 처리 완료 (#{source_id}): [{report_nm}] | 시그널 저장={saved}개, 잠재기업 등록={promoted}개")
 
     return total_saved
@@ -505,11 +497,7 @@ async def run() -> None:
     print("[dart_llm_worker] 분석 완료")
     if batch_num > 0:
         print(f"  처리한 공시 수  : {total_ready}건")
-        print(f"  실제 LLM 호출   : {total_llm_calls}회  (단건 방식이었다면 ~{total_ready}회)")
         print(f"  저장된 시그널   : {total_signals}개")
-        savings = total_ready - total_llm_calls
-        if savings > 0:
-            print(f"  💡 API 호출 절감 : {savings}회 절약 ({savings/total_ready*100:.0f}% 감소)")
     print("=" * 60)
 
 
