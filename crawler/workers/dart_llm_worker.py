@@ -409,6 +409,10 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
         saved    = 0
         promoted = 0
 
+        # 공시 수집 시 이미 붙여둔 꼬리표(source_role)를 company_role로 재활용합니다.
+        # CLIENT → 고객사 공시, POTENTIAL → 잠재사 공시 (별도 DB 조회 불필요)
+        source_role = disclosure.get("source_role") or "GENERAL"
+
         for sig in signals:
             # LLM이 엉뚱한 회사명을 추출할 수 있으므로, DART에서 가져온 정확한 회사명으로 덮어씁니다.
             sig["company_name"] = corp_name
@@ -416,7 +420,7 @@ async def process_chunk(client: httpx.AsyncClient, semaphore: asyncio.Semaphore,
             # confidence 임계값 미만의 시그널은 저장하지 않습니다.
             # 임계값 조절: 상단 CONFIDENCE_THRESHOLD 상수를 변경하세요.
             if float(sig.get("confidence", 1.0)) >= CONFIDENCE_THRESHOLD:
-                upsert_signal(None, sig, source="dart", rcept_no=rcept_no)
+                upsert_signal(None, sig, source="dart", rcept_no=rcept_no, company_role=source_role)
                 saved += 1
 
                 # 잠재 기업 발굴 조건을 충족하면 companies에 GENERAL로 등록합니다.

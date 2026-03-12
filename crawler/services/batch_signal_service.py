@@ -105,6 +105,27 @@ def should_register_general(sig: dict) -> bool:
 should_promote_to_potential = should_register_general
 
 
+def get_company_role(company_name: str) -> str:
+    """
+    companies 테이블에서 해당 기업의 현재 등급(company_role)을 조회합니다.
+    등록되어 있지 않거나 등급이 없는 경우 'GENERAL'을 반환합니다.
+    뉴스 시그널 저장 시 기업 롤을 확인하는 용도로 사용합니다.
+    """
+    company_name = (company_name or "").strip()
+    if not company_name:
+        return "GENERAL"
+
+    row = (
+        supabase.table("companies")
+        .select("company_role")
+        .eq("company_name", company_name)
+        .limit(1)
+        .execute()
+    ).data or []
+
+    return (row[0].get("company_role") if row else None) or "GENERAL"
+
+
 
 def upsert_general_company(company_name: str) -> None:
     """
@@ -158,15 +179,21 @@ def upsert_signal(
     sig: dict,
     source: str = "news",
     rcept_no: str | None = None,
+    company_role: str | None = None,
 ) -> None:
     """
     시그널 1건을 signals 테이블에 저장합니다.
 
     - event_hash가 같은 시그널이 이미 있으면 덮어쓰지 않습니다. (UPSERT)
     - 뉴스 시그널: article_id 채우고, rcept_no = NULL
-    - DART 시그널: rcept_no 채우고, article_id = NULL
+    - DART 시그널: rcept_no 채우고, article_id = NULL, company_role은 source_role에서 전달
+    - company_role이 None이면 뉴스 출신으로 판단하여 DB에서 직접 조회합니다.
     """
     event_hash = make_event_hash(sig)
+
+    # company_role이 전달되지 않은 경우(뉴스 출신): DB에서 현재 등급 조회
+    if company_role is None:
+        company_role = get_company_role(sig.get("company_name", ""))
 
     data = {
         "event_hash":      event_hash,
@@ -181,6 +208,7 @@ def upsert_signal(
         "severity_level":  int(sig.get("severity_level", 2)),
         "confidence":      float(sig.get("confidence", 0.8)),
         "created_at":      datetime.utcnow().isoformat(),
+        "company_role":    company_role,
     }
 
     # 뉴스 시그널: article_id 만 채우고 rcept_no는 NULL
