@@ -9,7 +9,7 @@ type OpportunitySummary = {
   estimatedRevenue: number;
 };
 
-type OpportunityItem = {
+export type OpportunityItem = {
   id: string;
   priority: "urgent" | "high" | "medium";
   company: string;

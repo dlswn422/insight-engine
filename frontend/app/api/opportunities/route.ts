@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { getCompanyRoles, normalizeName } from "@/lib/company-service"
 
 type OpportunityPriority = "urgent" | "high" | "medium"
 
@@ -53,6 +54,10 @@ function actionLabelFromPriority(priority: OpportunityPriority) {
 
 export async function GET() {
   try {
+    // 1. 기업 분류 맵 가져오기
+    const roleMap = await getCompanyRoles();
+
+    // 2. 모든 점수 데이터 가져오기 (컬럼 부재로 필터링 제거)
     const { data: scoreRows, error: scoreError } = await supabase
       .from("company_scores")
       .select(`
@@ -65,14 +70,21 @@ export async function GET() {
       `)
       .gt("opportunity_score", 0)
       .order("opportunity_score", { ascending: false })
-      .limit(20)
+      .limit(500);
 
     if (scoreError) {
       console.error("[/api/opportunities] company_scores error:", scoreError)
       return NextResponse.json({ error: "Failed to fetch scores" }, { status: 500 })
     }
 
-    const companies = (scoreRows ?? []).map((row) => row.company_name)
+    // 3. POTENTIAL 기업만 필터링
+    const allRows = scoreRows ?? [];
+    const potentialRows = allRows.filter((r) => {
+      const norm = normalizeName(r.company_name);
+      return roleMap.get(norm)?.role === "POTENTIAL";
+    });
+
+    const companies = potentialRows.map((row) => row.company_name)
     if (companies.length === 0) {
       return NextResponse.json({
         summary: {
@@ -116,11 +128,11 @@ export async function GET() {
     const signalMap = new Map<string, any[]>()
     for (const row of signalRows ?? []) {
       const arr = signalMap.get(row.company_name) ?? []
-      arr.push(row)
+      arr.push(row);
       signalMap.set(row.company_name, arr)
     }
 
-    const items: OpportunityItem[] = (scoreRows ?? []).map((row, idx) => {
+    const items: OpportunityItem[] = potentialRows.map((row, idx) => {
       const company = row.company_name
       const score = Number(row.opportunity_score ?? 0)
       const priority = decidePriority(score)

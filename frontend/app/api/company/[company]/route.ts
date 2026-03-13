@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
+import { normalizeName } from "@/lib/company-service"
 
 type RouteContext = {
   params: Promise<{
@@ -7,11 +8,8 @@ type RouteContext = {
   }>
 }
 
-function normalizeCompanyName(name: string) {
-  return decodeURIComponent(name)
-    .replace(/\(주\)|㈜|주식회사/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
+function normalizeParamName(name: string) {
+  return normalizeName(decodeURIComponent(name))
 }
 
 async function fetchDashboard(companyName: string) {
@@ -135,7 +133,7 @@ async function fetchStrategy(companyName: string) {
 export async function GET(_req: NextRequest, context: RouteContext) {
   try {
     const { company } = await context.params
-    const companyName = normalizeCompanyName(company)
+    const companyName = normalizeParamName(company)
 
     const { data: dashboard, error: dashboardError } = await fetchDashboard(companyName)
     if (dashboardError) {

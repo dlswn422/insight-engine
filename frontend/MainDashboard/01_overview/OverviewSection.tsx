@@ -57,7 +57,12 @@ const EMPTY_DATA: OverviewResponse = {
     warning: 0,
     danger: 0,
   },
-  alerts: [],
+  /* [MOCK_DATA_REMOVAL] 
+  alerts: [
+    { id: "1", company_name: "신일팜글라스", title: "이탈 위험 감지", subtitle: "최근 3개월 발주량 40% 감소", updated_at: new Date().toISOString(), confidence_score: 0.92 },
+  ],
+  */
+  alerts: [], // 실제 데이터만 표시하도록 비움
   trend: {
     labels: [],
     healthy: [],

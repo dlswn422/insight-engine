@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCompanyRoles, normalizeName } from "@/lib/company-service";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -11,6 +12,9 @@ function monthLabel(date: Date) {
 
 export async function GET() {
   try {
+    // 1. 기업 분류 맵 가져오기
+    const roleMap = await getCompanyRoles();
+
     const { data: signals, error: signalError } = await supabase
       .from("signals")
       .select(`
@@ -32,7 +36,7 @@ export async function GET() {
         risk_score,
         opportunity_score
       `)
-      .limit(100);
+      .limit(500);
 
     if (signalError) {
       console.error("[/api/reputation] signals error:", signalError);
@@ -43,7 +47,14 @@ export async function GET() {
     }
 
     const signalRows = signals ?? [];
-    const scoreRows = scores ?? [];
+    const allScoreRows = scores ?? [];
+
+    // CLIENT, POTENTIAL 기업만 필터링하여 평균 계산에 포함
+    const scoreRows = allScoreRows.filter((r) => {
+      const norm = normalizeName(r.company_name);
+      const role = roleMap.get(norm)?.role;
+      return role === "CLIENT" || role === "POTENTIAL";
+    });
 
     const totalSignals = signalRows.length || 1;
     const positiveSignals = signalRows.filter((s) => s.impact_type === "opportunity");

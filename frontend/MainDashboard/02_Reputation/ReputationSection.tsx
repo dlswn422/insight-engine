@@ -41,6 +41,14 @@ const EMPTY_DATA: ReputationResponse = {
     internalScore: 0,
     totalReputation: 0,
   },
+  /* [MOCK_DATA_REMOVAL] 
+  sentimentTrend: {
+    labels: ["1월", "2월", "3월"],
+    positive: [30, 45, 60],
+    negative: [20, 15, 10],
+    neutral: [50, 40, 30],
+  },
+  */
   sentimentTrend: {
     labels: [],
     positive: [],

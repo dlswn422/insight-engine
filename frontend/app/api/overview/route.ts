@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCompanyRoles, normalizeName } from "@/lib/company-service";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -11,6 +12,10 @@ function computeCompositeIndex(avgRisk: number, avgOpp: number) {
 
 export async function GET() {
   try {
+    // 1. 기업 분류 맵 가져오기
+    const roleMap = await getCompanyRoles();
+
+    // 2. 모든 점수 데이터 가져오기 (컬럼 부재로 필터링 제거)
     const { data: scores, error: scoreError } = await supabase
       .from("company_scores")
       .select(`
@@ -21,14 +26,23 @@ export async function GET() {
         opportunity_level,
         updated_at
       `)
-      .limit(100);
+      .limit(1000); // 넉넉하게 가져온 뒤 메모리 필터링
 
     if (scoreError) {
       console.error("[/api/overview] company_scores error:", scoreError);
       return NextResponse.json({ error: "Failed to fetch company scores" }, { status: 500 });
     }
 
-    const rows = scores ?? [];
+    // 3. 역할 부여 및 필터링 (CLIENT, POTENTIAL만 포함)
+    const allRows = scores ?? [];
+    const rows = allRows
+      .map((r) => {
+        const norm = normalizeName(r.company_name);
+        const info = roleMap.get(norm);
+        return { ...r, company_role: info?.role || "GENERAL" };
+      })
+      .filter((r) => r.company_role === "CLIENT" || r.company_role === "POTENTIAL");
+
     const totalCompanies = rows.length;
     const riskHighCount = rows.filter((r) => r.risk_level === "HIGH").length;
     const riskMedCount = rows.filter((r) => r.risk_level === "MED").length;

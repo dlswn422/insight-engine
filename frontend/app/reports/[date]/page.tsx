@@ -87,7 +87,7 @@ export default function ReportDetailPage({
       <section className="report-detail-card">
         <div className="report-section-title">Top Trends</div>
         <div className="report-grid">
-          {(parsed?.top_trends || []).map((trend, idx) => (
+          {(parsed?.top_trends || []).map((trend: any, idx: number) => (
             <div key={idx} className="report-sub-card">
               <div className="report-sub-card-title">
                 {trend.industry_tag || "-"} / {trend.trend_bucket || "-"} /{" "}
@@ -96,7 +96,7 @@ export default function ReportDetailPage({
               <div className="report-sub-card-text">{trend.why_it_matters || "-"}</div>
               {trend.examples?.length ? (
                 <div className="report-chip-row">
-                  {trend.examples.map((ex, i) => (
+                  {trend.examples.map((ex: string, i: number) => (
                     <span key={i} className="report-chip">
                       {ex}
                     </span>
@@ -111,7 +111,7 @@ export default function ReportDetailPage({
       <section className="report-detail-card">
         <div className="report-section-title">Risk Watchlist</div>
         <div className="report-grid">
-          {(parsed?.risk_watchlist || []).map((item, idx) => (
+          {(parsed?.risk_watchlist || []).map((item: any, idx: number) => (
             <div key={idx} className="report-sub-card">
               <div className="report-sub-card-title">
                 {item.company_name || "-"} (Risk {item.risk_score ?? "-"})
@@ -124,13 +124,13 @@ export default function ReportDetailPage({
               </div>
             </div>
           ))}
-        </div>
-      </section>
+          </div>
+          </section>
 
-      <section className="report-detail-card">
-        <div className="report-section-title">Opportunity Moves</div>
-        <div className="report-grid">
-          {(parsed?.opportunity_moves || []).map((item, idx) => (
+          <section className="report-detail-card">
+          <div className="report-section-title">Opportunity Watchlist</div>
+          <div className="report-grid">
+          {(parsed?.opportunity_watchlist || []).map((item: any, idx: number) => (
             <div key={idx} className="report-sub-card">
               <div className="report-sub-card-title">
                 {item.company_name || "-"} (Opp {item.opportunity_score ?? "-"})
@@ -143,8 +143,8 @@ export default function ReportDetailPage({
               </div>
             </div>
           ))}
-        </div>
-      </section>
+          </div>
+          </section>
 
       <section className="report-detail-card">
         <div className="report-section-title">Overall Strategy</div>

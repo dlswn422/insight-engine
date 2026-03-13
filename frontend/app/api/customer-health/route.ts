@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCompanyRoles, normalizeName } from "@/lib/company-service";
 
 type HealthStatus = "danger" | "warning" | "healthy";
 
@@ -36,6 +37,10 @@ function factorScoresFromSignals(signalTags: string[]) {
 
 export async function GET() {
   try {
+    // 1. 기업 분류 맵 가져오기
+    const roleMap = await getCompanyRoles();
+
+    // 2. 모든 점수 데이터 가져오기 (컬럼 부재로 필터링 제거)
     const { data: scoreRows, error: scoreError } = await supabase
       .from("company_scores")
       .select(`
@@ -50,7 +55,7 @@ export async function GET() {
         updated_at
       `)
       .order("risk_score", { ascending: false })
-      .limit(30);
+      .limit(200);
 
     if (scoreError) {
       console.error("[/api/customer-health] company_scores error:", scoreError);
@@ -60,7 +65,14 @@ export async function GET() {
       );
     }
 
-    const companies = (scoreRows ?? []).map((row) => row.company_name);
+    // 3. CLIENT 기업만 필터링
+    const allRows = scoreRows ?? [];
+    const clientRows = allRows.filter((r) => {
+      const norm = normalizeName(r.company_name);
+      return roleMap.get(norm)?.role === "CLIENT";
+    });
+
+    const companies = clientRows.map((row) => row.company_name);
 
     if (companies.length === 0) {
       return NextResponse.json({ items: [] });
@@ -85,7 +97,7 @@ export async function GET() {
       signalMap.set(row.company_name, arr);
     }
 
-    const items = (scoreRows ?? []).map((row) => {
+    const items = clientRows.map((row) => {
       const company = row.company_name;
       const riskScore = Number(row.risk_score ?? 0);
       const oppScore = Number(row.opportunity_score ?? 0);
