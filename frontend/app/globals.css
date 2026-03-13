@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "../styles/layout.css";
+@import "../styles/overview.css";
+@import "../styles/reputation.css";
+@import "../styles/customer.css";
+@import "../styles/opportunity.css";
+@import "../styles/reports.css";
