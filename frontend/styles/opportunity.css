@@ -1,0 +1,336 @@
+/* ===== Opportunity ===== */
+
+.opportunity-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.opportunity-loading-card { padding: 24px; }
+
+.opp-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 26px;
+}
+
+.opp-kpi {
+  min-height: 134px;
+  border-radius: 24px;
+  background: #111a33;
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;   /* 핵심 */
+  gap: 18px;
+  padding: 22px 26px;
+}
+
+.opp-kpi-icon {
+  width: 68px;
+  height: 68px;
+  min-width: 68px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  flex-shrink: 0;
+}
+
+.opp-kpi-icon.urgent {
+  background: rgba(255, 99, 132, 0.16);
+  color: #ff6b7a;
+}
+
+.opp-kpi-icon.high {
+  background: rgba(245, 185, 66, 0.14);
+  color: #ffd24d;
+}
+
+.opp-kpi-icon.medium {
+  background: rgba(96, 165, 250, 0.14);
+  color: #6ea8ff;
+}
+
+.opp-kpi-icon.revenue {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.opp-kpi-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;   /* 핵심 */
+  min-width: 0;
+}
+
+.opp-kpi-value {
+  color: #f8fafc;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.opp-kpi-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.opp-kpi-num {
+  font-size: 20px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.opp-kpi-label {
+  color: #8b98b3;
+  font-size: 14px;
+  line-height: 1.35;
+  margin-top: 8px;
+}
+
+.opp-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+.opp-icon.red {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ff6b6b;
+}
+
+.opp-icon.yellow {
+  background: rgba(245, 158, 11, 0.14);
+  color: #ffd24a;
+}
+
+.opp-icon.blue {
+  background: rgba(59, 130, 246, 0.14);
+  color: #6aa9ff;
+}
+
+.opp-icon.green {
+  background: rgba(16, 185, 129, 0.14);
+  color: #34d399;
+}
+
+.opportunity-board-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pipeline-stage-headers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ps-header {
+  height: 30px;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ps-urgent {
+  background: rgba(127, 29, 29, 0.28);
+  color: #ff6b6b;
+}
+
+.ps-high {
+  background: rgba(120, 83, 9, 0.28);
+  color: #ffd24a;
+}
+
+.ps-medium {
+  background: rgba(30, 64, 175, 0.28);
+  color: #60a5fa;
+}
+
+.pipeline-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.pipeline-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.opp-card {
+  min-height: 190px;
+  border-radius: 18px;
+  padding: 14px;
+  background: #16213f;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.opp-card-urgent { border-top: 2px solid #ff5d73; }
+.opp-card-high { border-top: 2px solid #f5b942; }
+.opp-card-medium { border-top: 2px solid #4ea1ff; }
+
+.opp-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.opp-company {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.opp-amount {
+  font-size: 14px;
+  font-weight: 800;
+  color: #22c55e;
+  white-space: nowrap;
+}
+
+.opp-trigger { min-height: 24px; }
+
+.opp-trigger-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.16);
+  color: #38bdf8;
+}
+
+.opp-desc {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #8b98b3;
+}
+
+.opp-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #6f7b94;
+}
+
+.opp-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.opp-date { white-space: nowrap; }
+
+.opp-action-btn {
+  width: 100%;
+  height: 38px;
+  border: 1px solid rgba(30, 136, 229, 0.35);
+  border-radius: 10px;
+  background: rgba(16, 46, 88, 0.55);
+  color: #29b6f6;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.opp-action-btn:hover { background: rgba(19, 62, 117, 0.7); }
+
+.opportunity-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 16px;
+  margin-top: 0;
+}
+
+.opportunity-chart-card {
+  min-height: 280px;
+  padding: 18px 18px 14px;
+  overflow: hidden;
+}
+
+.opportunity-chart-canvas-wrap {
+  height: 220px;
+  margin-top: 10px;
+}
+
+.opportunity-chart-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (max-width: 1200px) {
+  .opp-kpi-row,
+  .pipeline-stage-headers,
+  .pipeline-board,
+  .opportunity-charts-row {
+    grid-template-columns: 1fr;
+  }
+
+  .opp-card {
+    min-height: auto;
+  }
+}
+.metric-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.metric-badge-ai {
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.metric-badge-derived {
+  background: rgba(168, 85, 247, 0.12);
+  color: #c4b5fd;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.opp-kpi-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.pipeline-meta-note {
+  margin-top: -6px;
+  margin-bottom: 18px;
+  color: #8b98b3;
+  font-size: 12px;
+  line-height: 1.5;
+}
