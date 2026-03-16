@@ -36,9 +36,14 @@ type StrategyAction = {
   evidence?: string[]
 }
 
+type StrategyActionsPayload =
+  | StrategyAction[]
+  | { actions?: StrategyAction[] }
+  | null
+
 type StrategyData = {
   company_name?: string
-  actions?: any
+  actions?: StrategyActionsPayload
   updated_at?: string
   strategy_type?: string
   trigger_type?: string

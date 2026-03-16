@@ -38,9 +38,14 @@ type StrategyAction = {
   evidence?: string[];
 };
 
+type StrategyActionsPayload =
+  | StrategyAction[]
+  | { actions?: StrategyAction[] }
+  | null;
+
 type StrategyData = {
   company_name?: string;
-  actions?: any;
+  actions?: StrategyActionsPayload;
   updated_at?: string;
   strategy_type?: string;
   trigger_type?: string;
@@ -65,9 +70,20 @@ type Props = {
 
 function normalizeStrategyActions(strategy: StrategyData | null): StrategyAction[] {
   if (!strategy) return [];
+
   const raw = strategy.actions;
+
   if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.actions)) return raw.actions;
+
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "actions" in raw &&
+    Array.isArray(raw.actions)
+  ) {
+    return raw.actions;
+  }
+
   return [];
 }
 
@@ -92,6 +108,39 @@ function statusLabel(riskScore: number) {
   return "안정";
 }
 
+function calculateHealthScore(riskScore: number, oppScore: number) {
+  return Math.max(
+    0,
+    Math.min(100, Math.round(100 - riskScore * 0.7 + oppScore * 0.15))
+  );
+}
+
+function calculateChurnRisk(riskScore: number) {
+  return Math.round(Number(riskScore ?? 0));
+}
+
+function calculateOrderTrend(riskDelta: number) {
+  if (Number(riskDelta ?? 0) > 0) {
+    return `-${Math.min(23, Math.round(riskDelta / 4))}%`;
+  }
+  return "+0%";
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function CustomerHealthModal({ companyName, onClose }: Props) {
   const [data, setData] = useState<CompanyDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,6 +149,7 @@ export default function CustomerHealthModal({ companyName, onClose }: Props) {
 
   useEffect(() => {
     setMounted(true);
+
     const fetchDetail = async () => {
       try {
         const res = await fetch(`/api/company/${encodeURIComponent(companyName)}`);
@@ -116,15 +166,25 @@ export default function CustomerHealthModal({ companyName, onClose }: Props) {
     fetchDetail();
   }, [companyName]);
 
+  const strategy = data?.strategy ?? null;
+  const events = data?.events ?? [];
+
   const strategyActions = useMemo(
-    () => normalizeStrategyActions(data?.strategy ?? null),
-    [data]
+    () => normalizeStrategyActions(strategy),
+    [strategy]
   );
 
-  useEffect(() => {
-    if (!trendCanvasRef.current || !data?.dashboard) return;
+  const dashboard = data?.dashboard ?? null;
+  const riskScore = Number(dashboard?.risk_score ?? 0);
+  const oppScore = Number(dashboard?.opportunity_score ?? 0);
+  const healthScore = calculateHealthScore(riskScore, oppScore);
+  const churnRisk = calculateChurnRisk(riskScore);
+  const orderTrend = calculateOrderTrend(Number(dashboard?.risk_delta ?? 0));
 
-    const trendValues = buildTrendSeries(Number(data.dashboard.risk_score ?? 0));
+  useEffect(() => {
+    if (!trendCanvasRef.current || !dashboard) return;
+
+    const trendValues = buildTrendSeries(riskScore);
 
     const chart = new Chart(trendCanvasRef.current, {
       type: "line",
@@ -163,132 +223,142 @@ export default function CustomerHealthModal({ companyName, onClose }: Props) {
     });
 
     return () => chart.destroy();
-  }, [data]);
+  }, [dashboard, riskScore]);
 
-if (!mounted || !companyName) return null;
+  if (!mounted || !companyName) return null;
 
-return createPortal(
-  <div className="health-modal-overlay" onClick={onClose}>
-    <div className="health-modal" onClick={(e) => e.stopPropagation()}>
-      {loading ? (
-        <div className="health-modal-loading">불러오는 중...</div>
-      ) : !data?.dashboard ? (
-        <div className="health-modal-loading">상세 데이터를 불러오지 못했습니다.</div>
-      ) : (
-        <>
-          <button className="health-modal-close" onClick={onClose}>
-            ×
-          </button>
+  return createPortal(
+    <div className="health-modal-overlay" onClick={onClose}>
+      <div className="health-modal" onClick={(e) => e.stopPropagation()}>
+        {loading ? (
+          <div className="health-modal-loading">불러오는 중...</div>
+        ) : !dashboard ? (
+          <div className="health-modal-loading">
+            상세 데이터를 불러오지 못했습니다.
+          </div>
+        ) : (
+          <>
+            <button
+              className="health-modal-close"
+              onClick={onClose}
+              style={{
+                position: "absolute",
+                top: "18px",
+                right: "18px",
+                zIndex: 5,
+              }}
+            >
+              ×
+            </button>
+            <div className="health-modal-header">
+              <div className="health-modal-company-wrap">
+                <span className="health-modal-dot"></span>
+                <div>
+                  <div className="health-modal-company">{dashboard.company_name}</div>
+                  <div className="health-modal-sub">
+                    분석 기준 시각 · {formatDateTime(dashboard.updated_at)}
+                  </div>
+                </div>
+              </div>
+              <div
+                className="health-modal-status"
+                style={{
+                  marginRight: "56px",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {statusLabel(riskScore)}
+              </div>
+            </div>
 
-          <div className="health-modal-header">
-            <div className="health-modal-company-wrap">
-              <span className="health-modal-dot"></span>
-              <div>
-                <div className="health-modal-company">{data.dashboard.company_name}</div>
-                <div className="health-modal-sub">
-                  분석 기준 시각 · {data.dashboard.updated_at}
+            <div className="health-modal-kpis">
+              <div className="health-modal-kpi">
+                <div className="health-modal-kpi-label">건강도 점수</div>
+                <div className="health-modal-kpi-value">
+                  {healthScore}
+                  <span>/100</span>
+                </div>
+              </div>
+
+              <div className="health-modal-kpi">
+                <div className="health-modal-kpi-label">이탈 위험도</div>
+                <div className="health-modal-kpi-value danger">
+                  {churnRisk}%
+                </div>
+              </div>
+
+              <div className="health-modal-kpi">
+                <div className="health-modal-kpi-label">발주 추이</div>
+                <div className="health-modal-kpi-value danger">
+                  {orderTrend}
                 </div>
               </div>
             </div>
 
-            <div className="health-modal-status">
-              {statusLabel(Number(data.dashboard.risk_score ?? 0))}
-            </div>
-          </div>
-
-          <div className="health-modal-kpis">
-            <div className="health-modal-kpi">
-              <div className="health-modal-kpi-label">건강도 점수</div>
-              <div className="health-modal-kpi-value">
-                {Math.max(
-                  0,
-                  Math.min(
-                    100,
-                    Math.round(
-                      100 -
-                        Number(data.dashboard.risk_score ?? 0) * 0.7 +
-                        Number(data.dashboard.opportunity_score ?? 0) * 0.15
-                    )
-                  )
-                )}
-                <span>/100</span>
+            <div className="health-modal-chart-card">
+              <div className="health-modal-section-title">발주량 추이 (6개월)</div>
+              <div className="health-modal-trend-wrap">
+                <canvas ref={trendCanvasRef}></canvas>
               </div>
             </div>
 
-            <div className="health-modal-kpi">
-              <div className="health-modal-kpi-label">이탈 위험도</div>
-              <div className="health-modal-kpi-value danger">
-                {Math.round(Number(data.dashboard.risk_score ?? 0))}%
+            <div className="health-modal-signals">
+              <div className="health-modal-section-title">
+                감지된 이탈 신호 ({Math.min(events.length, 5)}건)
               </div>
-            </div>
 
-            <div className="health-modal-kpi">
-              <div className="health-modal-kpi-label">발주 추이</div>
-              <div className="health-modal-kpi-value danger">
-                {Number(data.dashboard.risk_delta ?? 0) > 0
-                  ? `-${Math.min(23, Math.round(data.dashboard.risk_delta / 4))}%`
-                  : "+0%"}
-              </div>
-            </div>
-          </div>
-
-          <div className="health-modal-chart-card">
-            <div className="health-modal-section-title">발주량 추이 (6개월)</div>
-            <div className="health-modal-trend-wrap">
-              <canvas ref={trendCanvasRef}></canvas>
-            </div>
-          </div>
-
-          <div className="health-modal-signals">
-            <div className="health-modal-section-title">
-              감지된 이탈 신호 ({Math.min(data.events?.length ?? 0, 5)}건)
-            </div>
-
-            <div className="health-signal-list">
-              {(data.events ?? []).slice(0, 5).map((signal, idx) => (
-                <div key={`${signal.article_id ?? idx}`} className="health-signal-item">
-                  <div className="health-signal-main">
-                    <div className="health-signal-title">{signal.event_type}</div>
-                    <div className="health-signal-desc">
-                      {signal.signal_category || "분석 신호"} · 강도 {signal.impact_strength}
+              <div className="health-signal-list">
+                {events.slice(0, 5).map((signal, idx) => (
+                  <div
+                    key={`${signal.article_id ?? idx}`}
+                    className="health-signal-item"
+                  >
+                    <div className="health-signal-main">
+                      <div className="health-signal-title">{signal.event_type}</div>
+                      <div className="health-signal-desc">
+                        {signal.signal_category || "분석 신호"} · 강도{" "}
+                        {signal.impact_strength}
+                      </div>
+                    </div>
+                    <div
+                      className={`health-signal-level ${
+                        buildSignalLevel(signal) === "위험"
+                          ? "danger"
+                          : "warning"
+                      }`}
+                    >
+                      {buildSignalLevel(signal)}
                     </div>
                   </div>
-                  <div
-                    className={`health-signal-level ${
-                      buildSignalLevel(signal) === "위험" ? "danger" : "warning"
-                    }`}
-                  >
-                    {buildSignalLevel(signal)}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="health-modal-strategy-card">
-            <div className="health-modal-section-title">AI 권장 대응 전략</div>
-            <ul className="health-strategy-list">
-              {strategyActions.length > 0 ? (
-                strategyActions.slice(0, 4).map((action, idx) => (
-                  <li key={idx}>
-                    {action.title || "전략"}
-                    {action.timeline ? ` (${action.timeline})` : ""}
-                  </li>
-                ))
-              ) : (
-                <>
-                  <li>즉시 주요 관계자 접촉 및 상황 점검</li>
-                  <li>가격/품질/납기 조건 재검토</li>
-                  <li>최근 부정 신호에 대한 대응 자료 제공</li>
-                  <li>담당 영업 1:1 관계 재구축 집중</li>
-                </>
-              )}
-            </ul>
-          </div>
-        </>
-      )}
-    </div>
-  </div>,
-  document.body
-);
+            <div className="health-modal-strategy-card">
+              <div className="health-modal-section-title">AI 권장 대응 전략</div>
+              <ul className="health-strategy-list">
+                {strategyActions.length > 0 ? (
+                  strategyActions.slice(0, 4).map((action, idx) => (
+                    <li key={idx}>
+                      {action.title || "전략"}
+                      {action.timeline ? ` (${action.timeline})` : ""}
+                    </li>
+                  ))
+                ) : (
+                  <>
+                    <li>즉시 주요 관계자 접촉 및 상황 점검</li>
+                    <li>가격/품질/납기 조건 재검토</li>
+                    <li>최근 부정 신호에 대한 대응 자료 제공</li>
+                    <li>담당 영업 1:1 관계 재구축 집중</li>
+                  </>
+                )}
+              </ul>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
 }

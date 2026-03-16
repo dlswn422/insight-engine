@@ -11,7 +11,31 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+type SignalRow = {
+  company_name: string;
+  event_type?: string | null;
+  impact_type?: string | null;
+  signal_category?: string | null;
+  created_at?: string | null;
+  severity_level?: number | null;
+  impact_strength?: number | null;
+  trend_bucket?: string | null;
+};
+
 type HealthStatus = "danger" | "warning" | "healthy";
+
+type FactorScores = {
+  order_drop: number;
+  contact_gap: number;
+  competitor_touch: number;
+  claim_issue: number;
+  bid_miss: number;
+  owner_change: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
 
 function toHealthScore(riskScore: number, oppScore: number) {
   const base = 100 - riskScore * 0.7 + oppScore * 0.15;
@@ -28,19 +52,281 @@ function toStatus(score: number): HealthStatus {
   return "healthy";
 }
 
-function factorScoresFromSignals(signalTags: string[]) {
-  const text = signalTags.join(" ");
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
 
-  const scoreIfIncludes = (keywords: string[], base: number) =>
-    keywords.some((k) => text.includes(k)) ? base : 1;
+function normalizeText(value?: string | null) {
+  return (value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function includesAny(text: string, keywords: string[]) {
+  return keywords.some((keyword) => text.includes(normalizeText(keyword)));
+}
+
+function recencyWeight(createdAt?: string | null) {
+  if (!createdAt) return 0.9;
+
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return 0.9;
+
+  const diffDays = Math.max(
+    0,
+    Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24))
+  );
+
+  if (diffDays <= 7) return 1.25;
+  if (diffDays <= 30) return 1.1;
+  if (diffDays <= 90) return 0.95;
+  return 0.8;
+}
+
+function impactDirectionWeight(impactType?: string | null) {
+  if (impactType === "risk") return 1.0;
+  if (impactType === "opportunity") return 0.35;
+  return 0.6;
+}
+
+function trendBucketWeight(trendBucket?: string | null) {
+  const text = normalizeText(trendBucket);
+
+  if (
+    includesAny(text, [
+      "하락",
+      "악화",
+      "감소",
+      "down",
+      "decline",
+      "negative",
+      "worsening",
+    ])
+  ) {
+    return 1.15;
+  }
+
+  if (
+    includesAny(text, [
+      "상승",
+      "개선",
+      "증가",
+      "up",
+      "growth",
+      "positive",
+      "improving",
+    ])
+  ) {
+    return 0.9;
+  }
+
+  return 1.0;
+}
+
+function signalPower(row: SignalRow) {
+  const severity = clamp(Number(row.severity_level ?? 1), 1, 5);
+  const impactStrength = clamp(Number(row.impact_strength ?? 40), 0, 100);
+
+  const severityNorm = severity / 5; // 0.2 ~ 1
+  const impactNorm = impactStrength / 100; // 0 ~ 1
+
+  // 기본 0.6 ~ 최대 2.6 정도
+  return 0.6 + severityNorm * 0.9 + impactNorm * 1.1;
+}
+
+function classifyFactorWeights(row: SignalRow): FactorScores {
+  const eventText = normalizeText(row.event_type);
+  const categoryText = normalizeText(row.signal_category);
+  const trendText = normalizeText(row.trend_bucket);
+
+  const weights: FactorScores = {
+    order_drop: 0,
+    contact_gap: 0,
+    competitor_touch: 0,
+    claim_issue: 0,
+    bid_miss: 0,
+    owner_change: 0,
+  };
+
+  // 1) event_type 직접 매핑
+  if (
+    includesAny(eventText, [
+      "발주 감소",
+      "수요 감소",
+      "매출 감소",
+      "주문 감소",
+      "출하 감소",
+      "수주 감소",
+      "order decline",
+      "sales drop",
+      "demand slowdown",
+    ])
+  ) {
+    weights.order_drop += 1.5;
+  }
+
+  if (
+    includesAny(eventText, [
+      "소통 단절",
+      "응답 지연",
+      "연락 두절",
+      "협의 중단",
+      "미응답",
+      "커뮤니케이션 이슈",
+      "response delay",
+      "no response",
+    ])
+  ) {
+    weights.contact_gap += 1.4;
+  }
+
+  if (
+    includesAny(eventText, [
+      "경쟁",
+      "경쟁사",
+      "시장 점유",
+      "대체 공급",
+      "파트너 이동",
+      "경쟁 제품",
+      "competitor",
+      "share loss",
+      "switch",
+    ])
+  ) {
+    weights.competitor_touch += 1.35;
+  }
+
+  if (
+    includesAny(eventText, [
+      "클레임",
+      "불만",
+      "품질",
+      "리콜",
+      "하자",
+      "민원",
+      "complaint",
+      "quality issue",
+      "recall",
+    ])
+  ) {
+    weights.claim_issue += 1.45;
+  }
+
+  if (
+    includesAny(eventText, [
+      "입찰 불참",
+      "입찰",
+      "제안 미응답",
+      "선정 실패",
+      "수주 실패",
+      "bid",
+      "proposal",
+      "rfp",
+    ])
+  ) {
+    weights.bid_miss += 1.35;
+  }
+
+  if (
+    includesAny(eventText, [
+      "담당자 교체",
+      "조직 개편",
+      "인사",
+      "대표 변경",
+      "책임자 변경",
+      "owner change",
+      "reorg",
+      "personnel",
+    ])
+  ) {
+    weights.owner_change += 1.35;
+  }
+
+  // 2) signal_category 보정
+  if (includesAny(categoryText, ["risk"])) {
+    weights.claim_issue += 0.35;
+    weights.contact_gap += 0.2;
+    weights.order_drop += 0.2;
+  }
+
+  if (includesAny(categoryText, ["partnership"])) {
+    weights.competitor_touch += 0.45;
+    weights.bid_miss += 0.3;
+  }
+
+  if (includesAny(categoryText, ["product"])) {
+    weights.claim_issue += 0.35;
+  }
+
+  if (includesAny(categoryText, ["investment", "expansion"])) {
+    weights.competitor_touch += 0.2;
+    weights.order_drop += 0.15;
+  }
+
+  // 3) trend_bucket 보정
+  if (
+    includesAny(trendText, [
+      "하락",
+      "악화",
+      "감소",
+      "down",
+      "decline",
+      "negative",
+    ])
+  ) {
+    weights.order_drop += 0.4;
+    weights.contact_gap += 0.2;
+  }
+
+  if (
+    includesAny(trendText, [
+      "상승",
+      "증가",
+      "growth",
+      "up",
+      "positive",
+    ])
+  ) {
+    weights.competitor_touch += 0.1;
+  }
+
+  return weights;
+}
+
+function finalizeFactorScore(raw: number) {
+  // raw 누적값을 0~5 범위로 완만하게 압축
+  return clamp(Math.round((raw / 1.6) * 10) / 10, 0, 5);
+}
+
+function factorScoresFromSignals(rows: SignalRow[]): FactorScores {
+  const rawTotals: Record<keyof FactorScores, number> = {
+    order_drop: 0,
+    contact_gap: 0,
+    competitor_touch: 0,
+    claim_issue: 0,
+    bid_miss: 0,
+    owner_change: 0,
+  };
+
+  for (const row of rows) {
+    const factorWeights = classifyFactorWeights(row);
+    const power = signalPower(row);
+    const direction = impactDirectionWeight(row.impact_type);
+    const recency = recencyWeight(row.created_at);
+    const trend = trendBucketWeight(row.trend_bucket);
+
+    const overallWeight = power * direction * recency * trend;
+
+    (Object.keys(rawTotals) as Array<keyof FactorScores>).forEach((key) => {
+      rawTotals[key] += factorWeights[key] * overallWeight;
+    });
+  }
 
   return {
-    order_drop: scoreIfIncludes(["발주 감소", "수요 감소", "매출 감소"], 5),
-    contact_gap: scoreIfIncludes(["소통 단절", "응답 지연", "연락 두절"], 4),
-    competitor_touch: scoreIfIncludes(["경쟁", "경쟁사", "시장 점유"], 4),
-    claim_issue: scoreIfIncludes(["클레임", "불만", "품질"], 3),
-    bid_miss: scoreIfIncludes(["입찰 불참", "입찰", "제안 미응답"], 4),
-    owner_change: scoreIfIncludes(["담당자 교체", "조직 개편", "인사"], 3),
+    order_drop: finalizeFactorScore(rawTotals.order_drop),
+    contact_gap: finalizeFactorScore(rawTotals.contact_gap),
+    competitor_touch: finalizeFactorScore(rawTotals.competitor_touch),
+    claim_issue: finalizeFactorScore(rawTotals.claim_issue),
+    bid_miss: finalizeFactorScore(rawTotals.bid_miss),
+    owner_change: finalizeFactorScore(rawTotals.owner_change),
   };
 }
 
@@ -81,7 +367,7 @@ export async function GET() {
           status: "heuristic",
           signal_tags: "aggregated",
           order_trend: "heuristic",
-          factors: "synthetic",
+          factors: "heuristic_weighted",
         },
       });
     }
@@ -93,12 +379,15 @@ export async function GET() {
         event_type,
         impact_type,
         signal_category,
-        created_at
+        created_at,
+        severity_level,
+        impact_strength,
+        trend_bucket
       `)
       .in("company_name", companies)
       .order("created_at", { ascending: false });
 
-    const signalMap = new Map<string, any[]>();
+    const signalMap = new Map<string, SignalRow[]>();
     for (const row of signalRows ?? []) {
       const arr = signalMap.get(row.company_name) ?? [];
       arr.push(row);
@@ -109,30 +398,21 @@ export async function GET() {
       const company = row.company_name;
       const riskScore = Number(row.risk_score ?? 0);
       const oppScore = Number(row.opportunity_score ?? 0);
-      // health_score:
-      // 최근 signal과 가중 규칙을 기반으로 계산한 건강도 점수.
-      // 확정 진단값이 아니라 고객 상태를 빠르게 비교하기 위한 인덱스다.
+
       const healthScore = toHealthScore(riskScore, oppScore);
-
-      // churn_risk:
-      // 최근 위험 신호를 기반으로 계산한 이탈 가능성 점수.
-      // 실제 이탈 예측 모델 확률값이 아니라 규칙 기반 운영 참고용 값이다.
       const churnRisk = toChurnRisk(riskScore);
-
       const status = toStatus(healthScore);
 
-      const recentSignals = (signalMap.get(company) ?? []).slice(0, 5);
-      const signalTags = recentSignals.map((s) => s.event_type).filter(Boolean);
+      const companySignals = signalMap.get(company) ?? [];
+      const recentSignals = companySignals.slice(0, 5);
+      const factorSignals = companySignals.slice(0, 12);
 
-      // factors:
-      // 레이더 차트 시각화를 위한 파생 점수.
-      // 각 항목은 원천 이벤트를 0~5 범위로 정규화한 설명용 값이다.
-      const factors = factorScoresFromSignals(signalTags);
+      const signalTags = recentSignals
+        .map((s) => s.event_type)
+        .filter(isNonEmptyString);
 
-      // order_trend:
-      // 실제 발주 원장 합계의 증감률이 아니라,
-      // risk_score / opportunity_score 차이를 기반으로 만든 추정 변동치다.
-      // 화면에서 "발주량 변동"으로 보이지만, 운영 참고용 heuristic이다.
+      const factors = factorScoresFromSignals(factorSignals);
+
       const orderTrend = Math.max(
         -25,
         Math.min(18, Math.round((oppScore - riskScore) * 0.25))
@@ -166,7 +446,7 @@ export async function GET() {
         status: "heuristic",
         signal_tags: "aggregated",
         order_trend: "heuristic",
-        factors: "synthetic",
+        factors: "heuristic_weighted",
       },
     });
   } catch (e) {

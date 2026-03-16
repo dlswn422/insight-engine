@@ -32,16 +32,16 @@ type OverviewResponse = {
     company_name: string;
     title: string;
     subtitle: string;
-    updated_at: string;
+    updated_at?: string | null;
     confidence_score: number;
     actionType: "detail" | "opportunity" | "analysis";
     buttonLabel: string;
   }>;
   trend: {
     labels: string[];
-    healthy: number[];
-    warning: number[];
-    danger: number[];
+    risk: number[];
+    opportunity: number[];
+    neutral: number[];
   };
 };
 
@@ -62,15 +62,18 @@ const EMPTY_DATA: OverviewResponse = {
   alerts: [],
   trend: {
     labels: [],
-    healthy: [],
-    warning: [],
-    danger: [],
+    risk: [],
+    opportunity: [],
+    neutral: [],
   },
 };
 
-function formatAlertTime(value: string) {
+function formatAlertTime(value?: string | null) {
+  if (!value) return "-";
+
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
+
   return d.toLocaleString("ko-KR", {
     month: "numeric",
     day: "numeric",
@@ -91,7 +94,7 @@ function getOverviewKpiSubtext(
 ) {
   switch (key) {
     case "composite":
-      return `위험 ${data.kpis.riskHighCount} · 기회 ${data.kpis.oppHighCount}`;
+      return `위험 상위 ${data.kpis.riskHighCount} · 기회 상위 ${data.kpis.oppHighCount}`;
     case "riskHigh":
       return data.kpis.riskHighCount > 0
         ? `즉시 대응 필요 ${data.kpis.riskHighCount}개사`
@@ -102,14 +105,14 @@ function getOverviewKpiSubtext(
         : "모니터링 대상 없음";
     case "oppHigh":
       return data.kpis.oppHighCount > 0
-        ? `즉시 영업 후보 ${data.kpis.oppHighCount}건`
-        : "신규 기회 없음";
+        ? `우선 검토 대상 ${data.kpis.oppHighCount}개사`
+        : "상위 기회 없음";
     case "totalCompanies":
-      return `활성 관리 ${data.kpis.totalCompanies}개사`;
+      return `점수 산출 대상 ${data.kpis.totalCompanies}개사`;
     case "dart":
       return data.kpis.dartCount > 0
-        ? `최근 공시 ${data.kpis.dartCount}건`
-        : "최근 공시 없음";
+        ? `최근 30일 공시 ${data.kpis.dartCount}건`
+        : "최근 30일 공시 없음";
     default:
       return "-";
   }
@@ -137,9 +140,9 @@ function getOverviewKpiChip(
     case "riskMed":
       return data.kpis.riskMedCount > 0 ? "모니터링" : "안정";
     case "oppHigh":
-      return data.kpis.oppHighCount > 0 ? "즉시 영업" : "대기";
+      return data.kpis.oppHighCount > 0 ? "우선 검토" : "대기";
     case "totalCompanies":
-      return "고객군";
+      return "모니터링";
     case "dart":
       return data.kpis.dartCount > 0 ? "활성" : "없음";
     default:
@@ -192,34 +195,34 @@ export default function OverviewSection({ setActiveSection }: Props) {
         labels: data.trend.labels,
         datasets: [
           {
-            label: "건강",
-            data: data.trend.healthy,
-            borderColor: "rgba(16, 185, 129, 1)",
-            backgroundColor: "rgba(16, 185, 129, 0.10)",
-            tension: 0.35,
-            fill: true,
-            pointRadius: 3,
-            pointBackgroundColor: "rgba(16, 185, 129, 1)",
-          },
-          {
-            label: "주의",
-            data: data.trend.warning,
-            borderColor: "rgba(245, 185, 66, 1)",
-            backgroundColor: "rgba(245, 185, 66, 0.08)",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
-            pointBackgroundColor: "rgba(245, 185, 66, 1)",
-          },
-          {
-            label: "위험",
-            data: data.trend.danger,
+            label: "위험 신호",
+            data: data.trend.risk,
             borderColor: "rgba(255, 93, 115, 1)",
-            backgroundColor: "rgba(255, 93, 115, 0.08)",
+            backgroundColor: "rgba(255, 93, 115, 0.10)",
             tension: 0.35,
             fill: false,
             pointRadius: 3,
             pointBackgroundColor: "rgba(255, 93, 115, 1)",
+          },
+          {
+            label: "기회 신호",
+            data: data.trend.opportunity,
+            borderColor: "rgba(16, 185, 129, 1)",
+            backgroundColor: "rgba(16, 185, 129, 0.10)",
+            tension: 0.35,
+            fill: false,
+            pointRadius: 3,
+            pointBackgroundColor: "rgba(16, 185, 129, 1)",
+          },
+          {
+            label: "기타 신호",
+            data: data.trend.neutral,
+            borderColor: "rgba(148, 163, 184, 1)",
+            backgroundColor: "rgba(148, 163, 184, 0.08)",
+            tension: 0.35,
+            fill: false,
+            pointRadius: 3,
+            pointBackgroundColor: "rgba(148, 163, 184, 1)",
           },
         ],
       },
@@ -248,7 +251,7 @@ export default function OverviewSection({ setActiveSection }: Props) {
           y: {
             beginAtZero: true,
             grid: { color: "rgba(255,255,255,0.06)" },
-            ticks: { color: "#94a3b8", stepSize: 10 },
+            ticks: { color: "#94a3b8", stepSize: 5 },
           },
         },
       },
@@ -321,8 +324,8 @@ export default function OverviewSection({ setActiveSection }: Props) {
   const kpiCards = [
     {
       key: "composite" as const,
-      title: "종합 평판 지수",
-      value: `${data.kpis.compositeIndex.toFixed(1)}`,
+      title: "종합 신호 지수",
+      value: `${data.kpis.compositeIndex}`,
       sub: getOverviewKpiSubtext("composite", data),
       chip: getOverviewKpiChip("composite", data),
       accent: "purple",
@@ -348,8 +351,8 @@ export default function OverviewSection({ setActiveSection }: Props) {
     },
     {
       key: "oppHigh" as const,
-      title: "신규 기회 건수",
-      value: `${data.kpis.oppHighCount}건`,
+      title: "상위 기회 기업",
+      value: `${data.kpis.oppHighCount}개사`,
       sub: getOverviewKpiSubtext("oppHigh", data),
       chip: getOverviewKpiChip("oppHigh", data),
       accent: "green",
@@ -357,7 +360,7 @@ export default function OverviewSection({ setActiveSection }: Props) {
     },
     {
       key: "totalCompanies" as const,
-      title: "총 관리 고객사",
+      title: "총 모니터링 기업",
       value: `${data.kpis.totalCompanies}개사`,
       sub: getOverviewKpiSubtext("totalCompanies", data),
       chip: getOverviewKpiChip("totalCompanies", data),
@@ -366,7 +369,7 @@ export default function OverviewSection({ setActiveSection }: Props) {
     },
     {
       key: "dart" as const,
-      title: "DART 모니터링",
+      title: "최근 공시 모니터링",
       value: `${data.kpis.dartCount}건`,
       sub: getOverviewKpiSubtext("dart", data),
       chip: getOverviewKpiChip("dart", data),
@@ -381,7 +384,7 @@ export default function OverviewSection({ setActiveSection }: Props) {
         <h1>
           <i className="fas fa-table-cells-large"></i> 전사 종합 상황판
         </h1>
-        <p>신일팜글라스 B2B Intelligence 핵심 KPI 실시간 현황</p>
+        <p>신일팜글라스 B2B Intelligence 핵심 KPI 요약</p>
       </div>
 
       {loading ? (
@@ -416,9 +419,9 @@ export default function OverviewSection({ setActiveSection }: Props) {
             <div className="chart-card overview-chart-card-v2 overview-trend-card">
               <div className="chart-header">
                 <h3>
-                  <i className="fas fa-chart-line"></i> 고객 건강도 추이
+                  <i className="fas fa-chart-line"></i> 최근 6개월 신호 추이
                 </h3>
-                <span className="overview-mini-chip">6개월</span>
+                <span className="overview-mini-chip">실집계</span>
               </div>
               <div className="overview-chart-canvas-wrap-v2">
                 <canvas ref={trendCanvasRef}></canvas>
@@ -428,7 +431,7 @@ export default function OverviewSection({ setActiveSection }: Props) {
             <div className="chart-card overview-chart-card-v2 overview-doughnut-card">
               <div className="chart-header">
                 <h3>
-                  <i className="fas fa-chart-pie"></i> 건강도 분포
+                  <i className="fas fa-chart-pie"></i> 현재 위험도 분포
                 </h3>
               </div>
               <div className="overview-chart-canvas-wrap-v2 doughnut-wrap">
@@ -455,66 +458,84 @@ export default function OverviewSection({ setActiveSection }: Props) {
             <div className="chart-header">
               <div className="overview-alert-title-wrap">
                 <h3>
-                  <i className="fas fa-bell"></i> 이번 주 핵심 알림
+                  <i className="fas fa-bell"></i> 최근 AI 추천 알림
                 </h3>
                 <span className="overview-alert-badge-v2">{alertCount}건</span>
               </div>
             </div>
 
             <div className="overview-alert-list-v2">
-              {data.alerts.map((alert, idx) => {
-                const tone =
-                  idx % 4 === 0
-                    ? "danger"
-                    : idx % 4 === 1
-                    ? "danger"
-                    : idx % 4 === 2
-                    ? "warning"
-                    : "success";
+              {data.alerts.length > 0 ? (
+                data.alerts.map((alert, idx) => {
+                  const tone =
+                    idx % 4 === 0
+                      ? "danger"
+                      : idx % 4 === 1
+                      ? "danger"
+                      : idx % 4 === 2
+                      ? "warning"
+                      : "success";
 
-                return (
-                  <div
-                    key={alert.id}
-                    className={`overview-alert-item-v2 tone-${tone}`}
-                  >
-                    <div className="overview-alert-left-v2">
-                      <div className={`overview-alert-dot-v2 ${tone}`}>
-                        <i
-                          className={`fas ${
-                            tone === "danger"
-                              ? "fa-circle-exclamation"
-                              : tone === "warning"
-                              ? "fa-flask"
-                              : "fa-industry"
-                          }`}
-                        ></i>
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`overview-alert-item-v2 tone-${tone}`}
+                    >
+                      <div className="overview-alert-left-v2">
+                        <div className={`overview-alert-dot-v2 ${tone}`}>
+                          <i
+                            className={`fas ${
+                              tone === "danger"
+                                ? "fa-circle-exclamation"
+                                : tone === "warning"
+                                ? "fa-flask"
+                                : "fa-industry"
+                            }`}
+                          ></i>
+                        </div>
+
+                        <div className="overview-alert-content-v2">
+                          <div className="overview-alert-title-v2">
+                            {alert.company_name} — {alert.title}
+                          </div>
+                          <div className="overview-alert-subtitle-v2">
+                            {alert.subtitle}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="overview-alert-content-v2">
-                        <div className="overview-alert-title-v2">
-                          {alert.company_name} — {alert.title}
+                      <div className="overview-alert-right-v2">
+                        <div className="overview-alert-time-v2">
+                          {formatAlertTime(alert.updated_at)}
                         </div>
-                        <div className="overview-alert-subtitle-v2">
-                          {alert.subtitle}
-                        </div>
+                        <button
+                          type="button"
+                          className="overview-alert-btn-v2"
+                          onClick={() => handleAlertAction(alert.actionType)}
+                        >
+                          {alert.buttonLabel}
+                        </button>
                       </div>
                     </div>
-
-                    <div className="overview-alert-right-v2">
-                      <div className="overview-alert-time-v2">
-                        {formatAlertTime(alert.updated_at)}
+                  );
+                })
+              ) : (
+                <div className="overview-alert-item-v2 tone-success">
+                  <div className="overview-alert-left-v2">
+                    <div className="overview-alert-dot-v2 success">
+                      <i className="fas fa-circle-check"></i>
+                    </div>
+                    <div className="overview-alert-content-v2">
+                      <div className="overview-alert-title-v2">
+                        현재 표시할 AI 추천 알림이 없습니다.
                       </div>
-                      <button
-                        type="button"
-                        className="overview-alert-btn-v2"
-                        onClick={() => handleAlertAction(alert.actionType)}
-                      >
-                        {alert.buttonLabel}
-                      </button>
+                      <div className="overview-alert-subtitle-v2">
+                        action_recommendations 데이터가 쌓이면 최신 추천이 이 영역에 표시됩니다.
+                      </div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           </div>
         </>

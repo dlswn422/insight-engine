@@ -2,15 +2,32 @@
  * Reputation API
  *
  * 주의:
- * - 본 API의 scoreCards는 재무 원천 테이블을 직접 집계한 확정 점수가 아니라,
- *   signals + company_scores를 기반으로 만든 운영 참고용 heuristic 지표다.
- * - mediaScore / financeScore / internalScore / totalReputation은
- *   화면용 종합 인덱스이며, 절대적 평가값이 아니라 상대 비교용이다.
- * - 향후 실제 재무 원천 데이터, 평판 원천 데이터가 연결되면 교체 대상이다.
+ * - 현재 scoreCards는 기존 프론트 호환을 위해 임시 유지되는 필드입니다.
+ * - 새 화면은 summaryCards + sentimentTrend + mediaCategory + keywordCloud + topIssues를
+ *   중심으로 사용하는 방향을 권장합니다.
+ * - sentimentTrend는 synthetic 스케일값이 아니라 최근 12개월 실제 건수 집계입니다.
  */
 
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+
+type SignalRow = {
+  company_name?: string | null;
+  event_type?: string | null;
+  impact_type?: string | null;
+  impact_strength?: number | null;
+  severity_level?: number | null;
+  signal_category?: string | null;
+  created_at?: string | null;
+};
+
+type ScoreRow = {
+  company_name?: string | null;
+  risk_score?: number | null;
+  opportunity_score?: number | null;
+};
+
+type KeywordTone = "positive" | "negative" | "neutral";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -19,8 +36,6 @@ function clamp(value: number, min: number, max: number) {
 function monthLabel(date: Date) {
   return `${date.getMonth() + 1}월`;
 }
-
-type KeywordTone = "positive" | "negative" | "neutral";
 
 function decideKeywordTone(
   positiveCount: number,
@@ -31,9 +46,40 @@ function decideKeywordTone(
   return "neutral";
 }
 
-export async function GET() {
-  try {
-    const { data: signals, error: signalError } = await supabase
+function getMonthBuckets(monthCount: number) {
+  const now = new Date();
+
+  return Array.from({ length: monthCount }).map((_, idx) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (monthCount - 1 - idx), 1);
+
+    return {
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: monthLabel(d),
+      positive: 0,
+      negative: 0,
+      neutral: 0,
+    };
+  });
+}
+
+function monthKeyFromDate(value?: string | null) {
+  if (!value) return null;
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function fetchAllSignalsSince(startIso: string): Promise<SignalRow[]> {
+  const pageSize = 1000;
+  let from = 0;
+  const allRows: SignalRow[] = [];
+
+  while (true) {
+    const to = from + pageSize - 1;
+
+    const { data, error } = await supabase
       .from("signals")
       .select(`
         company_name,
@@ -44,132 +90,149 @@ export async function GET() {
         signal_category,
         created_at
       `)
+      .gte("created_at", startIso)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .range(from, to);
 
-    const { data: scores } = await supabase
+    if (error) throw error;
+
+    const batch = (data ?? []) as SignalRow[];
+    allRows.push(...batch);
+
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
+async function fetchAllScoreRows(): Promise<ScoreRow[]> {
+  const pageSize = 1000;
+  let from = 0;
+  const allRows: ScoreRow[] = [];
+
+  while (true) {
+    const to = from + pageSize - 1;
+
+    const { data, error } = await supabase
       .from("company_scores")
       .select(`
         company_name,
         risk_score,
         opportunity_score
       `)
-      .limit(100);
+      .range(from, to);
 
-    if (signalError) {
-      console.error("[/api/reputation] signals error:", signalError);
-      return NextResponse.json(
-        { error: "Failed to fetch signals" },
-        { status: 500 }
-      );
-    }
+    if (error) throw error;
 
-    const signalRows = signals ?? [];
-    const scoreRows = scores ?? [];
+    const batch = (data ?? []) as ScoreRow[];
+    allRows.push(...batch);
 
-    const totalSignals = signalRows.length || 1;
-    const positiveSignals = signalRows.filter(
-      (s) => s.impact_type === "opportunity"
-    );
-    const negativeSignals = signalRows.filter(
-      (s) => s.impact_type === "risk"
-    );
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
+export async function GET() {
+  try {
+    const monthBuckets = getMonthBuckets(12);
+    const oldestMonth = monthBuckets[0];
+    const oldestMonthDate = new Date(
+      Number(oldestMonth.key.slice(0, 4)),
+      Number(oldestMonth.key.slice(5, 7)) - 1,
+      1
+    ).toISOString();
+
+    const [signalRows, scoreRows] = await Promise.all([
+      fetchAllSignalsSince(oldestMonthDate),
+      fetchAllScoreRows(),
+    ]);
+
+    const totalSignals = signalRows.length;
+    const positiveSignals = signalRows.filter((s) => s.impact_type === "opportunity");
+    const negativeSignals = signalRows.filter((s) => s.impact_type === "risk");
+
+
+    const classifiedSignalCount = positiveSignals.length + negativeSignals.length;
+
+    const positiveSignalRatio =
+      classifiedSignalCount > 0
+        ? Math.round((positiveSignals.length / classifiedSignalCount) * 100)
+        : 0;
+
+    const negativeSignalRatio =
+      classifiedSignalCount > 0
+        ? Math.round((negativeSignals.length / classifiedSignalCount) * 100)
+        : 0;
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const recent30dSignals = signalRows.filter((row) => {
+      if (!row.created_at) return false;
+      const d = new Date(row.created_at);
+      return !Number.isNaN(d.getTime()) && d >= thirtyDaysAgo;
+    });
+
+    const recent30dSignalCount = recent30dSignals.length;
 
     const avgRisk =
       scoreRows.length > 0
-        ? scoreRows.reduce(
-            (acc, cur) => acc + Number(cur.risk_score ?? 0),
-            0
-          ) / scoreRows.length
+        ? scoreRows.reduce((acc, cur) => acc + Number(cur.risk_score ?? 0), 0) / scoreRows.length
         : 0;
 
     const avgOpp =
       scoreRows.length > 0
-        ? scoreRows.reduce(
-            (acc, cur) => acc + Number(cur.opportunity_score ?? 0),
-            0
-          ) / scoreRows.length
+        ? scoreRows.reduce((acc, cur) => acc + Number(cur.opportunity_score ?? 0), 0) / scoreRows.length
         : 0;
-    // mediaScore:
-    // 최근 signals 중 opportunity 비중을 기반으로 만든 미디어 평판 heuristic.
-    // 실제 기사 감성 분석의 정밀 결과가 아니라, impact_type 분포 기반의 간이 지표다.
-    const mediaScore = clamp(
-      Math.round((positiveSignals.length / totalSignals) * 100 * 1.2),
-      20,
-      95
-    );
-    
-    // financeScore:
-    // company_scores의 평균 risk/opportunity를 사용한 재무 건전성 heuristic.
-    // 실제 재무제표 원천값(매출, 영업이익, 부채비율 등)을 직접 계산한 값이 아니다.
-    const financeScore = clamp(
-      Math.round(75 - avgRisk * 0.35 + avgOpp * 0.2),
-      20,
-      95
-    );
 
-    // internalScore:
-    // risk/opportunity 평균을 약하게 반영한 내부 평판 heuristic.
-    // 운영 화면용 참고 지표이며, 별도 내부 VOC/CS 원천이 연결되면 교체 가능하다.
-    const internalScore = clamp(
-      Math.round(70 - avgRisk * 0.2 + avgOpp * 0.15),
-      20,
-      95
-    );
-
-    // totalReputation:
-    // media/finance/internal score를 가중합한 종합 인덱스.
-    // 화면 비교용 composite score이며, 확정 진단 점수로 해석하면 안 된다.
+    /**
+     * 기존 프론트 호환용 scoreCards
+     * - 화면이 아직 old label을 쓰고 있을 수 있어 임시 유지
+     * - 다음 단계에서 ReputationSection.tsx를 수정하면서 summaryCards로 전환 권장
+     */
+    const mediaScore = clamp(positiveSignalRatio, 0, 100);
+    const financeScore = clamp(Math.round(75 - avgRisk * 0.35 + avgOpp * 0.2), 20, 95);
+    const internalScore = clamp(Math.round(70 - avgRisk * 0.2 + avgOpp * 0.15), 20, 95);
     const totalReputation = clamp(
       Math.round(mediaScore * 0.4 + financeScore * 0.3 + internalScore * 0.3),
       20,
       95
     );
 
-    const now = new Date();
-    const monthBuckets = Array.from({ length: 12 }).map((_, idx) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
-      return {
-        key: `${d.getFullYear()}-${d.getMonth() + 1}`,
-        label: monthLabel(d),
-        positive: 0,
-        negative: 0,
-        neutral: 0,
-      };
+    const monthIndexMap = new Map<string, number>();
+    monthBuckets.forEach((bucket, index) => {
+      monthIndexMap.set(bucket.key, index);
     });
 
     for (const row of signalRows) {
-      if (!row.created_at) continue;
-      const d = new Date(row.created_at);
-      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-      const bucket = monthBuckets.find((b) => b.key === key);
-      if (!bucket) continue;
+      const key = monthKeyFromDate(row.created_at);
+      if (!key) continue;
 
-      if (row.impact_type === "opportunity") bucket.positive += 1;
-      else if (row.impact_type === "risk") bucket.negative += 1;
-      else bucket.neutral += 1;
+      const index = monthIndexMap.get(key);
+      if (index === undefined) continue;
+
+      if (row.impact_type === "opportunity") {
+        monthBuckets[index].positive += 1;
+      } else if (row.impact_type === "risk") {
+        monthBuckets[index].negative += 1;
+      } else {
+        monthBuckets[index].neutral += 1;
+      }
     }
 
-    const maxMonth =
-      Math.max(
-        ...monthBuckets.map((b) => b.positive + b.negative + b.neutral),
-        1
-      ) || 1;
-
-    // sentimentTrend:
-    // 최근 signals를 월 단위로 버킷화한 뒤 화면용 비율 스케일로 변환한 synthetic 시계열.
-    // 실제 저장된 월별 평판 지수 시계열 원본이 아니라 대시보드 시각화를 위한 파생값이다.
+    /**
+     * sentimentTrend:
+     * - synthetic 스케일링 제거
+     * - 최근 12개월 실제 건수 집계
+     */
     const sentimentTrend = {
       labels: monthBuckets.map((b) => b.label),
-      positive: monthBuckets.map((b) =>
-        Math.round((b.positive / maxMonth) * 80 + 10)
-      ),
-      negative: monthBuckets.map((b) =>
-        Math.round((b.negative / maxMonth) * 25 + 5)
-      ),
-      neutral: monthBuckets.map((b) =>
-        Math.round((b.neutral / maxMonth) * 18 + 8)
-      ),
+      positive: monthBuckets.map((b) => b.positive),
+      negative: monthBuckets.map((b) => b.negative),
+      neutral: monthBuckets.map((b) => b.neutral),
     };
 
     const categoryMap = new Map<string, number>();
@@ -211,9 +274,7 @@ export async function GET() {
 
       keywordMap.set(key, prev);
     }
-    // keywordCloud:
-    // signals.event_type 빈도와 impact_type 분포를 기반으로 만든 워드클라우드.
-    // tone은 키워드별 risk/opportunity 출현 비율 기준의 단순 규칙값이다.
+
     const keywordCloud = Array.from(keywordMap.entries())
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 12)
@@ -231,6 +292,7 @@ export async function GET() {
 
     for (const row of signalRows) {
       const key = row.event_type || "기타 이슈";
+
       const prev = issueMap.get(key) ?? {
         count: 0,
         severitySum: 0,
@@ -239,6 +301,7 @@ export async function GET() {
 
       prev.count += 1;
       prev.severitySum += Number(row.severity_level ?? 1);
+
       issueMap.set(key, prev);
     }
 
@@ -254,22 +317,40 @@ export async function GET() {
       .slice(0, 5);
 
     return NextResponse.json({
+      /**
+       * 새 화면용 집계 카드
+       * - 실제 집계 중심
+       * - 다음 단계 ReputationSection.tsx 수정 시 이쪽 사용 권장
+       */
+      summaryCards: {
+        positiveSignalRatio,
+        negativeSignalRatio,
+        totalSignals,
+        recent30dSignals: recent30dSignalCount,
+      },
+
+      /**
+       * 기존 화면 호환용
+       * - 임시 유지
+       */
       scoreCards: {
         mediaScore,
         financeScore,
         internalScore,
         totalReputation,
       },
+
       sentimentTrend,
       mediaCategory,
       keywordCloud,
       topIssues,
       meta: {
-        scoreCards: "heuristic",
-        sentimentTrend: "synthetic",
+        summaryCards: "aggregated",
+        scoreCards: "legacy_heuristic_compatibility",
+        sentimentTrend: "aggregated",
         mediaCategory: "aggregated",
-        keywordCloud: "heuristic",
-        topIssues: "heuristic",
+        keywordCloud: "aggregated+ui_weight",
+        topIssues: "aggregated+ranking",
       },
     });
   } catch (e) {

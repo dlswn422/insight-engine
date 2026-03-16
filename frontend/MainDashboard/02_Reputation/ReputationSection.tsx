@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 
 type ReputationResponse = {
+  summaryCards?: {
+    positiveSignalRatio: number;
+    negativeSignalRatio: number;
+    totalSignals: number;
+    recent30dSignals: number;
+  };
   scoreCards: {
     mediaScore: number;
     financeScore: number;
@@ -36,6 +42,12 @@ type ReputationResponse = {
 };
 
 const EMPTY_DATA: ReputationResponse = {
+  summaryCards: {
+    positiveSignalRatio: 0,
+    negativeSignalRatio: 0,
+    totalSignals: 0,
+    recent30dSignals: 0,
+  },
   scoreCards: {
     mediaScore: 0,
     financeScore: 0,
@@ -61,6 +73,7 @@ type ScoreCardProps = {
 };
 
 type KeywordFilterType = "positive" | "negative" | "all";
+type TrendMode = "sentiment" | "exposure";
 
 function getReputationDelta(
   score: number,
@@ -109,11 +122,48 @@ function ScoreCard({ title, score, accent, delta }: ScoreCardProps) {
   );
 }
 
+function toPercentArray(
+  positive: number[],
+  negative: number[],
+  neutral: number[]
+) {
+  const length = Math.max(positive.length, negative.length, neutral.length);
+
+  const positivePct: number[] = [];
+  const negativePct: number[] = [];
+  const neutralPct: number[] = [];
+
+  for (let i = 0; i < length; i += 1) {
+    const p = Number(positive[i] ?? 0);
+    const n = Number(negative[i] ?? 0);
+    const u = Number(neutral[i] ?? 0);
+    const total = p + n + u;
+
+    if (total <= 0) {
+      positivePct.push(0);
+      negativePct.push(0);
+      neutralPct.push(0);
+      continue;
+    }
+
+    positivePct.push(Number(((p / total) * 100).toFixed(1)));
+    negativePct.push(Number(((n / total) * 100).toFixed(1)));
+    neutralPct.push(Number(((u / total) * 100).toFixed(1)));
+  }
+
+  return {
+    positivePct,
+    negativePct,
+    neutralPct,
+  };
+}
+
 export default function ReputationSection() {
   const [data, setData] = useState<ReputationResponse>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [keywordFilter, setKeywordFilter] =
     useState<KeywordFilterType>("all");
+  const [trendMode, setTrendMode] = useState<TrendMode>("sentiment");
 
   const trendCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const categoryCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -131,6 +181,7 @@ export default function ReputationSection() {
         }
 
         setData({
+          summaryCards: json?.summaryCards ?? EMPTY_DATA.summaryCards,
           scoreCards: json?.scoreCards ?? EMPTY_DATA.scoreCards,
           sentimentTrend: json?.sentimentTrend ?? EMPTY_DATA.sentimentTrend,
           mediaCategory: Array.isArray(json?.mediaCategory)
@@ -152,71 +203,135 @@ export default function ReputationSection() {
     fetchReputation();
   }, []);
 
+  const filteredKeywordItems = useMemo(() => {
+    if (keywordFilter === "all") return data.keywordCloud;
+    return data.keywordCloud.filter((item) => item.tone === keywordFilter);
+  }, [keywordFilter, data.keywordCloud]);
+
+  const trendPercentData = useMemo(() => {
+    return toPercentArray(
+      data.sentimentTrend.positive,
+      data.sentimentTrend.negative,
+      data.sentimentTrend.neutral
+    );
+  }, [data.sentimentTrend]);
+
+  const exposureValues = useMemo(() => {
+    return data.sentimentTrend.labels.map((_, idx) => {
+      return (
+        Number(data.sentimentTrend.positive[idx] ?? 0) +
+        Number(data.sentimentTrend.negative[idx] ?? 0) +
+        Number(data.sentimentTrend.neutral[idx] ?? 0)
+      );
+    });
+  }, [data.sentimentTrend]);
+
   useEffect(() => {
     if (!trendCanvasRef.current || !categoryCanvasRef.current || loading) return;
 
-    const trendChart = new Chart(trendCanvasRef.current, {
-      type: "line",
-      data: {
-        labels: data.sentimentTrend.labels,
-        datasets: [
-          {
-            label: "긍정",
-            data: data.sentimentTrend.positive,
-            borderColor: "rgba(34,197,94,1)",
-            backgroundColor: "rgba(34,197,94,0.10)",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
-          },
-          {
-            label: "부정",
-            data: data.sentimentTrend.negative,
-            borderColor: "rgba(255,93,115,1)",
-            backgroundColor: "rgba(255,93,115,0.08)",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
-          },
-          {
-            label: "중립",
-            data: data.sentimentTrend.neutral,
-            borderColor: "rgba(96,165,250,1)",
-            backgroundColor: "rgba(96,165,250,0.08)",
-            tension: 0.35,
-            fill: false,
-            pointRadius: 3,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        plugins: {
-          legend: {
-            labels: {
-              color: "#c7d2e3",
+    const trendChart =
+      trendMode === "sentiment"
+        ? new Chart(trendCanvasRef.current, {
+            type: "line",
+            data: {
+              labels: data.sentimentTrend.labels,
+              datasets: [
+                {
+                  label: "긍정",
+                  data: trendPercentData.positivePct,
+                  borderColor: "rgba(34,197,94,1)",
+                  backgroundColor: "rgba(34,197,94,0.10)",
+                  tension: 0.35,
+                  fill: false,
+                  pointRadius: 3,
+                },
+                {
+                  label: "부정",
+                  data: trendPercentData.negativePct,
+                  borderColor: "rgba(255,93,115,1)",
+                  backgroundColor: "rgba(255,93,115,0.08)",
+                  tension: 0.35,
+                  fill: false,
+                  pointRadius: 3,
+                },
+                {
+                  label: "중립",
+                  data: trendPercentData.neutralPct,
+                  borderColor: "rgba(96,165,250,1)",
+                  backgroundColor: "rgba(96,165,250,0.08)",
+                  tension: 0.35,
+                  fill: false,
+                  pointRadius: 3,
+                },
+              ],
             },
-          },
-        },
-        scales: {
-          x: {
-            grid: { color: "rgba(255,255,255,0.06)" },
-            ticks: { color: "#94a3b8" },
-          },
-          y: {
-            min: 0,
-            max: 100,
-            grid: { color: "rgba(255,255,255,0.06)" },
-            ticks: {
-              color: "#94a3b8",
-              callback: (value) => `${value}%`,
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: {
+                legend: {
+                  labels: {
+                    color: "#c7d2e3",
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: { color: "#94a3b8" },
+                },
+                y: {
+                  min: 0,
+                  max: 100,
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: {
+                    color: "#94a3b8",
+                    callback: (value) => `${value}%`,
+                  },
+                },
+              },
             },
-          },
-        },
-      },
-    });
+          })
+        : new Chart(trendCanvasRef.current, {
+            type: "bar",
+            data: {
+              labels: data.sentimentTrend.labels,
+              datasets: [
+                {
+                  label: "미디어 노출",
+                  data: exposureValues,
+                  backgroundColor: "rgba(29, 155, 209, 0.35)",
+                  borderColor: "rgba(29, 155, 209, 1)",
+                  borderWidth: 1.5,
+                  borderRadius: 4,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: {
+                legend: {
+                  display: false,
+                },
+              },
+              scales: {
+                x: {
+                  grid: { color: "rgba(255,255,255,0.04)" },
+                  ticks: { color: "#94a3b8" },
+                },
+                y: {
+                  beginAtZero: true,
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: {
+                    color: "#94a3b8",
+                  },
+                },
+              },
+            },
+          });
 
     const categoryChart = new Chart(categoryCanvasRef.current, {
       type: "doughnut",
@@ -226,12 +341,12 @@ export default function ReputationSection() {
           {
             data: data.mediaCategory.map((item) => item.value),
             backgroundColor: [
-              "rgba(99,102,241,0.88)",
-              "rgba(34,197,94,0.88)",
+              "rgba(29, 155, 209, 0.88)",
               "rgba(59,130,246,0.88)",
+              "rgba(16,185,129,0.88)",
               "rgba(245,185,66,0.88)",
+              "rgba(244,63,94,0.88)",
               "rgba(168,85,247,0.88)",
-              "rgba(239,68,68,0.88)",
             ],
             borderWidth: 0,
           },
@@ -259,12 +374,15 @@ export default function ReputationSection() {
       trendChart.destroy();
       categoryChart.destroy();
     };
-  }, [data, loading]);
-
-  const filteredKeywordItems = useMemo(() => {
-    if (keywordFilter === "all") return data.keywordCloud;
-    return data.keywordCloud.filter((item) => item.tone === keywordFilter);
-  }, [keywordFilter, data.keywordCloud]);
+  }, [
+    data,
+    loading,
+    trendMode,
+    trendPercentData.positivePct,
+    trendPercentData.negativePct,
+    trendPercentData.neutralPct,
+    exposureValues,
+  ]);
 
   return (
     <section className="section active" id="section-reputation">
@@ -319,11 +437,70 @@ export default function ReputationSection() {
 
           <div className="reputation-chart-row">
             <div className="chart-card reputation-chart-card">
-              <div className="chart-header">
+              <div
+                className="chart-header"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
                 <h3>
-                  <i className="fas fa-chart-line"></i> 감성 트렌드 분석 (12개월)
+                  <i className="fas fa-chart-line"></i>{" "}
+                  {trendMode === "sentiment"
+                    ? "감성 트렌드 분석 (12개월)"
+                    : "미디어 노출 (12개월)"}
                 </h3>
+
+                <div
+                  style={{
+                    display: "inline-flex",
+                    background: "rgba(255,255,255,0.04)",
+                    borderRadius: "10px",
+                    padding: "4px",
+                    gap: "4px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setTrendMode("sentiment")}
+                    style={{
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      background:
+                        trendMode === "sentiment"
+                          ? "rgba(255,255,255,0.08)"
+                          : "transparent",
+                      color: trendMode === "sentiment" ? "#ffffff" : "#7f8ea3",
+                      fontWeight: 600,
+                    }}
+                  >
+                    감성 분석
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrendMode("exposure")}
+                    style={{
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      background:
+                        trendMode === "exposure"
+                          ? "rgba(255,255,255,0.08)"
+                          : "transparent",
+                      color: trendMode === "exposure" ? "#ffffff" : "#7f8ea3",
+                      fontWeight: 600,
+                    }}
+                  >
+                    미디어 노출
+                  </button>
+                </div>
               </div>
+
               <div className="reputation-chart-canvas-wrap">
                 <canvas ref={trendCanvasRef}></canvas>
               </div>
@@ -345,7 +522,7 @@ export default function ReputationSection() {
             <div className="chart-card reputation-keyword-card">
               <div className="chart-header">
                 <h3>
-                  <i className="fas fa-cloud"></i> 키워드 워드클라우드
+                  <i className="fas fa-cloud"></i> 키워드 클라우드
                 </h3>
               </div>
 
