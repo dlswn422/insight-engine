@@ -15,6 +15,9 @@ export async function GET() {
     // 1. 기업 분류 맵 가져오기
     const roleMap = await getCompanyRoles();
 
+    // 실제 등록된 고객사(CLIENT) 수 계산
+    const managedCount = Array.from(roleMap.values()).filter((info) => info.role === "CLIENT").length;
+
     // 2. 모든 점수 데이터 가져오기 (컬럼 부재로 필터링 제거)
     const { data: scores, error: scoreError } = await supabase
       .from("company_scores")
@@ -131,7 +134,8 @@ export async function GET() {
         riskHighCount,
         riskMedCount,
         oppHighCount,
-        totalCompanies,
+        totalCompanies, // 점수가 있는 활성 기업 총합 (CLIENT + POTENTIAL)
+        totalManagedCount: managedCount, // 실제 managed_clients 테이블 등록 수
         dartCount: 0,
       },
       distribution: healthDistribution,

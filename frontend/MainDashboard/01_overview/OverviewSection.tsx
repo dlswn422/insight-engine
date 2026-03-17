@@ -20,6 +20,7 @@ type OverviewResponse = {
     riskMedCount: number;
     oppHighCount: number;
     totalCompanies: number;
+    totalManagedCount: number;
     dartCount: number;
   };
   distribution: {
@@ -50,6 +51,7 @@ const EMPTY_DATA: OverviewResponse = {
     riskMedCount: 0,
     oppHighCount: 0,
     totalCompanies: 0,
+    totalManagedCount: 0,
     dartCount: 0,
   },
   distribution: {
@@ -112,6 +114,8 @@ function getOverviewKpiSubtext(
         ? `즉시 영업 후보 ${data.kpis.oppHighCount}건`
         : "신규 기회 없음";
     case "totalCompanies":
+      return `활성 관리 ${data.kpis.totalCompanies}개사`;
+    case "totalManaged":
       return `활성 관리 ${data.kpis.totalCompanies}개사`;
     case "dart":
       return data.kpis.dartCount > 0
@@ -389,8 +393,8 @@ export default function OverviewSection({ setActiveSection }: Props) {
     {
       key: "totalCompanies" as const,
       title: "총 관리 고객사",
-      value: `${data.kpis.totalCompanies}개사`,
-      sub: getOverviewKpiSubtext("totalCompanies", data),
+      value: `${data.kpis.totalManagedCount}개사`,
+      sub: getOverviewKpiSubtext("totalManaged", data),
       chip: getOverviewKpiChip("totalCompanies", data),
       accent: "blue",
       icon: "fa-folder-open",
