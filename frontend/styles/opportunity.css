@@ -283,15 +283,100 @@
   height: 100% !important;
 }
 
-@media (max-width: 1200px) {
-  .opp-kpi-row,
-  .pipeline-stage-headers,
-  .pipeline-board,
-  .opportunity-charts-row {
-    grid-template-columns: 1fr;
+/* ─── 모바일 대응 (768px 이하) ─── */
+@media (max-width: 768px) {
+  .opp-kpi-row {
+    grid-template-columns: 1fr 1fr; /* 2열 배치로 공간 활용 */
+    gap: 12px;
   }
 
-  .opp-card {
+  .opp-kpi {
+    padding: 16px;
     min-height: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .opp-kpi-icon {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 12px;
+    font-size: 20px;
+  }
+
+  .opp-kpi-num {
+    font-size: 22px;
+  }
+
+  .opp-kpi-label {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  /* 파이프라인 보드 최적화 */
+  .pipeline-stage-headers {
+    display: none; /* 모바일에서는 헤더를 숨기고 카드 내부 라벨로 대체 */
+  }
+
+  .pipeline-board {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .pipeline-col {
+    gap: 12px;
+  }
+
+  /* 각 단계별 구분선 또는 타이틀 추가 */
+  .pipeline-col::before {
+    content: attr(data-stage);
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    width: fit-content;
+  }
+
+  .pipeline-col:nth-child(1)::before { background: rgba(255, 93, 115, 0.15); color: #ff5d73; content: "URGENT (즉시 대응)"; }
+  .pipeline-col:nth-child(2)::before { background: rgba(245, 185, 66, 0.15); color: #f5b942; content: "HIGH (우선순위)"; }
+  .pipeline-col:nth-child(3)::before { background: rgba(78, 161, 255, 0.15); color: #4ea1ff; content: "MEDIUM (관찰)"; }
+
+  .opp-card {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .opp-company {
+    font-size: 17px;
+  }
+
+  .opp-amount {
+    font-size: 15px;
+  }
+
+  .opp-desc {
+    font-size: 14px;
+    color: #c7d2e3;
+  }
+
+  .opp-footer {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .opportunity-charts-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .opp-kpi-row {
+    grid-template-columns: 1fr; /* 더 작은 화면에선 1열 */
   }
 }

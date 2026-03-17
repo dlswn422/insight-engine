@@ -58,13 +58,15 @@ export default function Sidebar({
           <i className="fas fa-flask"></i>
         </div>
 
-        <div className="brand-copy">
-          <strong>신일팜글래스</strong>
-          <span>B2B Intelligence</span>
-        </div>
+        {sidebarOpen && (
+          <div className="brand-copy">
+            <strong>신일팜글래스</strong>
+            <span>B2B Intelligence</span>
+          </div>
+        )}
       </div>
 
-      <div className="sidebar-section-label">ANALYTICS</div>
+      {sidebarOpen && <div className="sidebar-section-label">ANALYTICS</div>}
       <nav className="nav-list">
         {analyticsItems.map((item) => (
           <button
@@ -72,20 +74,23 @@ export default function Sidebar({
             type="button"
             className={`nav-item ${activeSection === item.key ? "active" : ""}`}
             onClick={() => setActiveSection(item.key)}
+            title={!sidebarOpen ? item.title : ""}
           >
             <span className="nav-icon-box">
               <i className={`fas ${item.icon}`}></i>
             </span>
 
-            <span className="nav-text">
-              <span className="nav-title">{item.title}</span>
-              <span className="nav-subtitle">{item.subtitle}</span>
-            </span>
+            {sidebarOpen && (
+              <span className="nav-text">
+                <span className="nav-title">{item.title}</span>
+                <span className="nav-subtitle">{item.subtitle}</span>
+              </span>
+            )}
           </button>
         ))}
       </nav>
 
-      <div className="sidebar-section-label">MANAGEMENT</div>
+      {sidebarOpen && <div className="sidebar-section-label">MANAGEMENT</div>}
       <nav className="nav-list">
         {managementItems.map((item) => (
           <button
@@ -93,15 +98,18 @@ export default function Sidebar({
             type="button"
             className={`nav-item ${activeSection === item.key ? "active" : ""}`}
             onClick={() => setActiveSection(item.key)}
+            title={!sidebarOpen ? item.title : ""}
           >
             <span className="nav-icon-box">
               <i className={`fas ${item.icon}`}></i>
             </span>
 
-            <span className="nav-text">
-              <span className="nav-title">{item.title}</span>
-              <span className="nav-subtitle">{item.subtitle}</span>
-            </span>
+            {sidebarOpen && (
+              <span className="nav-text">
+                <span className="nav-title">{item.title}</span>
+                <span className="nav-subtitle">{item.subtitle}</span>
+              </span>
+            )}
           </button>
         ))}
       </nav>

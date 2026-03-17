@@ -252,25 +252,79 @@
   cursor: pointer;
 }
 
-@media (max-width: 1500px) {
+/* ─── 모바일 대응 (768px 이하) ─── */
+@media (max-width: 768px) {
   .overview-kpi-grid-v2 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr; /* 2열 배치로 공간 효율 극대화 */
+    gap: 12px;
   }
-}
 
-@media (max-width: 1200px) {
-  .overview-kpi-grid-v2,
+  .overview-kpi-card-v2 {
+    padding: 14px;
+    min-height: auto;
+    gap: 12px;
+  }
+
+  .overview-kpi-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  .overview-kpi-value-v2 {
+    font-size: 22px;
+  }
+
+  .overview-kpi-title-v2 {
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  /* 차트 및 알림 최적화 */
   .overview-chart-row-v2 {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .overview-chart-card-v2 {
+    min-height: auto;
+    padding: 16px;
   }
 
   .overview-alert-item-v2 {
+    padding: 14px;
+    gap: 12px;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+
+  .overview-alert-left-v2 {
+    gap: 10px;
+  }
+
+  .overview-alert-title-v2 {
+    font-size: 13.5px;
+    line-height: 1.4;
   }
 
   .overview-alert-right-v2 {
-    width: 100%;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    padding-top: 10px;
+    margin-top: 4px;
     justify-content: space-between;
+  }
+
+  .overview-alert-btn-v2 {
+    flex: 1;
+    height: 38px;
+    font-size: 13px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .overview-kpi-grid-v2 {
+    grid-template-columns: 1fr; /* 아주 작은 화면에선 1열 */
   }
 }
