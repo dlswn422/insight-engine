@@ -95,6 +95,7 @@ function getOverviewKpiSubtext(
     | "riskMed"
     | "oppHigh"
     | "totalCompanies"
+    | "totalManaged"
     | "dart",
   data: OverviewResponse
 ) {
@@ -133,6 +134,7 @@ function getOverviewKpiChip(
     | "riskMed"
     | "oppHigh"
     | "totalCompanies"
+    | "totalManaged"
     | "dart",
   data: OverviewResponse
 ) {
@@ -146,6 +148,7 @@ function getOverviewKpiChip(
     case "oppHigh":
       return data.kpis.oppHighCount > 0 ? "즉시 영업" : "대기";
     case "totalCompanies":
+    case "totalManaged":
       return "고객군";
     case "dart":
       return data.kpis.dartCount > 0 ? "활성" : "없음";
